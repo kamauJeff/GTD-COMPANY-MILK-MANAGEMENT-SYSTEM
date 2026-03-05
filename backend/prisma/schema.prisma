@@ -1,0 +1,246 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+// PaymentMethod: "MPESA" | "BANK"
+// EmployeeRole:  "GRADER" | "DRIVER" | "SHOPKEEPER" | "FACTORY" | "OFFICE" | "ADMIN"
+// PayrollStatus: "PENDING" | "APPROVED" | "PAID"
+// VarianceType:  "GRADER_COLLECTION" | "DRIVER_DELIVERY" | "SHOP_REMITTANCE"
+
+model Route {
+  id           Int       @id @default(autoincrement())
+  code         String    @unique
+  name         String
+  supervisorId Int?
+  supervisor   Employee? @relation("RouteSupervisor", fields: [supervisorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  farmers      Farmer[]
+  collections  MilkCollection[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Farmer {
+  id            Int      @id @default(autoincrement())
+  code          String   @unique
+  name          String
+  idNumber      String?
+  phone         String
+  routeId       Int
+  pricePerLitre Decimal  @db.Decimal(10, 2)
+  paymentMethod String   @default("MPESA")
+  mpesaPhone    String?
+  bankName      String?
+  bankAccount   String?
+  paidOn15th    Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  route         Route    @relation(fields: [routeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  collections   MilkCollection[]
+  advances      FarmerAdvance[]
+  deductions    FarmerDeduction[]
+  payments      FarmerPayment[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Employee {
+  id            Int      @id @default(autoincrement())
+  code          String   @unique
+  name          String
+  phone         String
+  role          String
+  salary        Decimal  @db.Decimal(10, 2)
+  passwordHash  String?
+  paymentMethod String   @default("MPESA")
+  mpesaPhone    String?
+  bankName      String?
+  bankAccount   String?
+  isActive      Boolean  @default(true)
+  supervisedRoutes Route[] @relation("RouteSupervisor")
+  managedShop   Shop?    @relation("ShopKeeper")
+  collections   MilkCollection[]
+  factoryReceipts FactoryReceipt[]
+  deliveries    DeliveryToShop[]
+  varianceRecords VarianceRecord[]
+  payrolls      Payroll[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model MilkCollection {
+  id          Int      @id @default(autoincrement())
+  farmerId    Int
+  routeId     Int
+  graderId    Int
+  litres      Decimal  @db.Decimal(10, 2)
+  collectedAt DateTime
+  synced      Boolean  @default(false)
+  smsSent     Boolean  @default(false)
+  receiptNo   String?
+  farmer      Farmer   @relation(fields: [farmerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  route       Route    @relation(fields: [routeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  grader      Employee @relation(fields: [graderId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([collectedAt])
+  @@index([farmerId, collectedAt])
+  @@index([routeId, collectedAt])
+}
+
+model FactoryReceipt {
+  id         Int      @id @default(autoincrement())
+  graderId   Int
+  litres     Decimal  @db.Decimal(10, 2)
+  receivedAt DateTime
+  notes      String?
+  grader     Employee @relation(fields: [graderId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  batches    PasteurizationBatch[] @relation("BatchReceipts")
+  createdAt  DateTime @default(now())
+}
+
+model PasteurizationBatch {
+  id           Int      @id @default(autoincrement())
+  batchNo      String   @unique
+  inputLitres  Decimal  @db.Decimal(10, 2)
+  outputLitres Decimal  @db.Decimal(10, 2)
+  lossLitres   Decimal  @db.Decimal(10, 2) @default(0)
+  processedAt  DateTime
+  qualityNotes String?
+  receipts     FactoryReceipt[] @relation("BatchReceipts")
+  deliveries   DeliveryToShop[]
+  createdAt    DateTime @default(now())
+}
+
+model Shop {
+  id           Int      @id @default(autoincrement())
+  code         String   @unique
+  name         String
+  location     String?
+  keeperId     Int      @unique
+  tillNumber   String?
+  keeper       Employee @relation("ShopKeeper", fields: [keeperId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  deliveries   DeliveryToShop[]
+  sales        ShopSale[]
+  kopokopoTxns KopokopoTransaction[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model DeliveryToShop {
+  id           Int      @id @default(autoincrement())
+  batchId      Int
+  shopId       Int
+  driverId     Int
+  litres       Decimal  @db.Decimal(10, 2)
+  sellingPrice Decimal  @db.Decimal(10, 2)
+  deliveredAt  DateTime
+  batch        PasteurizationBatch @relation(fields: [batchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shop         Shop     @relation(fields: [shopId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  driver       Employee @relation(fields: [driverId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt    DateTime @default(now())
+}
+
+model ShopSale {
+  id              Int      @id @default(autoincrement())
+  shopId          Int
+  saleDate        DateTime
+  litresSold      Decimal  @db.Decimal(10, 2)
+  expectedRevenue Decimal  @db.Decimal(10, 2)
+  cashCollected   Decimal  @db.Decimal(10, 2)
+  tillAmount      Decimal  @db.Decimal(10, 2) @default(0)
+  variance        Decimal  @db.Decimal(10, 2) @default(0)
+  reconciled      Boolean  @default(false)
+  shop            Shop     @relation(fields: [shopId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model FarmerAdvance {
+  id          Int      @id @default(autoincrement())
+  farmerId    Int
+  amount      Decimal  @db.Decimal(10, 2)
+  advanceDate DateTime
+  notes       String?
+  farmer      Farmer   @relation(fields: [farmerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt   DateTime @default(now())
+}
+
+model FarmerDeduction {
+  id            Int      @id @default(autoincrement())
+  farmerId      Int
+  amount        Decimal  @db.Decimal(10, 2)
+  reason        String
+  deductionDate DateTime
+  periodMonth   Int
+  periodYear    Int
+  farmer        Farmer   @relation(fields: [farmerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt     DateTime @default(now())
+}
+
+model FarmerPayment {
+  id              Int      @id @default(autoincrement())
+  farmerId        Int
+  periodMonth     Int
+  periodYear      Int
+  isMidMonth      Boolean  @default(false)
+  grossPay        Decimal  @db.Decimal(10, 2)
+  totalAdvances   Decimal  @db.Decimal(10, 2)
+  totalDeductions Decimal  @db.Decimal(10, 2)
+  netPay          Decimal  @db.Decimal(10, 2)
+  status          String   @default("PENDING")
+  kopokopoRef     String?
+  paidAt          DateTime?
+  farmer          Farmer   @relation(fields: [farmerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt       DateTime @default(now())
+
+  @@unique([farmerId, periodMonth, periodYear, isMidMonth])
+}
+
+model Payroll {
+  id                 Int      @id @default(autoincrement())
+  employeeId         Int
+  periodMonth        Int
+  periodYear         Int
+  baseSalary         Decimal  @db.Decimal(10, 2)
+  varianceDeductions Decimal  @db.Decimal(10, 2) @default(0)
+  otherDeductions    Decimal  @db.Decimal(10, 2) @default(0)
+  netPay             Decimal  @db.Decimal(10, 2)
+  status             String   @default("PENDING")
+  kopokopoRef        String?
+  paidAt             DateTime?
+  employee           Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt          DateTime @default(now())
+
+  @@unique([employeeId, periodMonth, periodYear])
+}
+
+model VarianceRecord {
+  id          Int      @id @default(autoincrement())
+  employeeId  Int
+  type        String
+  amount      Decimal  @db.Decimal(10, 2)
+  recordDate  DateTime
+  periodMonth Int
+  periodYear  Int
+  description String?
+  applied     Boolean  @default(false)
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt   DateTime @default(now())
+}
+
+model KopokopoTransaction {
+  id              Int      @id @default(autoincrement())
+  shopId          Int
+  tillNumber      String
+  amount          Decimal  @db.Decimal(10, 2)
+  transactionRef  String   @unique
+  transactionDate DateTime
+  matched         Boolean  @default(false)
+  shop            Shop     @relation(fields: [shopId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt       DateTime @default(now())
+}

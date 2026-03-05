@@ -1,0 +1,122 @@
+// src/controllers/collection.controller.ts
+import { Request, Response } from 'express';
+import prisma from '../config/prisma';
+import { AppError } from '../middleware/errorHandler';
+import { sendCollectionSMS } from '../services/sms.service';
+
+export async function getCollections(req: Request, res: Response) {
+  const { routeId, farmerId, date, page = '1', limit = '100' } = req.query;
+  const where: any = {};
+  if (routeId) where.routeId = Number(routeId);
+  if (farmerId) where.farmerId = Number(farmerId);
+  if (date) {
+    const d = new Date(String(date));
+    const next = new Date(d);
+    next.setDate(next.getDate() + 1);
+    where.collectedAt = { gte: d, lt: next };
+  }
+
+  const [total, collections] = await Promise.all([
+    prisma.milkCollection.count({ where }),
+    prisma.milkCollection.findMany({
+      where,
+      include: {
+        farmer: { select: { id: true, code: true, name: true, phone: true } },
+        route: { select: { id: true, name: true } },
+        grader: { select: { id: true, name: true } },
+      },
+      skip: (Number(page) - 1) * Number(limit),
+      take: Number(limit),
+      orderBy: { collectedAt: 'desc' },
+    }),
+  ]);
+
+  res.json({ data: collections, total });
+}
+
+export async function createCollection(req: Request, res: Response) {
+  const { farmerId, litres, collectedAt } = req.body;
+
+  const farmer = await prisma.farmer.findUnique({ where: { id: farmerId } });
+  if (!farmer) throw new AppError(404, 'Farmer not found');
+
+  const collection = await prisma.milkCollection.create({
+    data: {
+      farmerId,
+      routeId: farmer.routeId,
+      graderId: req.user!.sub,
+      litres,
+      collectedAt: new Date(collectedAt),
+      synced: true,
+    },
+  });
+
+  // Fire-and-forget SMS
+  sendCollectionSMS(farmer, collection).catch(() => {});
+
+  res.status(201).json(collection);
+}
+
+// Bulk sync from offline mobile app
+export async function batchSync(req: Request, res: Response) {
+  const records: any[] = req.body.records;
+  if (!Array.isArray(records) || records.length === 0) {
+    throw new AppError(400, 'records array is required');
+  }
+
+  const results = { created: 0, failed: 0, errors: [] as string[] };
+
+  for (const r of records) {
+    try {
+      const farmer = await prisma.farmer.findUnique({ where: { id: r.farmerId } });
+      if (!farmer) { results.failed++; results.errors.push(`Unknown farmer ${r.farmerId}`); continue; }
+
+      await prisma.milkCollection.create({
+        data: {
+          farmerId: r.farmerId,
+          routeId: farmer.routeId,
+          graderId: req.user!.sub,
+          litres: r.litres,
+          collectedAt: new Date(r.collectedAt),
+          receiptNo: r.receiptNo,
+          synced: true,
+        },
+      });
+      results.created++;
+
+      sendCollectionSMS(farmer, { litres: r.litres, collectedAt: r.collectedAt } as any).catch(() => {});
+    } catch (e: any) {
+      results.failed++;
+      results.errors.push(e.message);
+    }
+  }
+
+  res.json(results);
+}
+
+export async function getDailyRouteTotals(req: Request, res: Response) {
+  const { date } = req.query;
+  const d = date ? new Date(String(date)) : new Date();
+  d.setHours(0, 0, 0, 0);
+  const next = new Date(d);
+  next.setDate(next.getDate() + 1);
+
+  const totals = await prisma.milkCollection.groupBy({
+    by: ['routeId'],
+    where: { collectedAt: { gte: d, lt: next } },
+    _sum: { litres: true },
+    _count: { farmerId: true },
+  });
+
+  const routes = await prisma.route.findMany({ select: { id: true, code: true, name: true } });
+  const routeMap = Object.fromEntries(routes.map((r) => [r.id, r]));
+
+  res.json(
+    totals.map((t) => ({
+      route: routeMap[t.routeId],
+      totalLitres: t._sum.litres ?? 0,
+      farmerCount: t._count.farmerId,
+    }))
+  );
+}
+

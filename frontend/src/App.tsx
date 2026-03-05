@@ -1,0 +1,46 @@
+// src/App.tsx
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { useAuthStore } from './store/auth.store';
+import Layout from './components/layout/Layout';
+import LoginPage from './pages/LoginPage';
+import DashboardPage from './pages/DashboardPage';
+import FarmersPage from './pages/FarmersPage';
+import RoutesPage from './pages/RoutesPage';
+import CollectionsPage from './pages/CollectionsPage';
+import FactoryPage from './pages/FactoryPage';
+import ShopsPage from './pages/ShopsPage';
+import PaymentsPage from './pages/PaymentsPage';
+import PayrollPage from './pages/PayrollPage';
+import ReportsPage from './pages/ReportsPage';
+
+function RequireAuth({ children }: { children: JSX.Element }) {
+  const token = useAuthStore((s) => s.token);
+  return token ? children : <Navigate to="/login" replace />;
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/"
+        element={
+          <RequireAuth>
+            <Layout />
+          </RequireAuth>
+        }
+      >
+        <Route index element={<DashboardPage />} />
+        <Route path="farmers" element={<FarmersPage />} />
+        <Route path="routes" element={<RoutesPage />} />
+        <Route path="collections" element={<CollectionsPage />} />
+        <Route path="factory" element={<FactoryPage />} />
+        <Route path="shops" element={<ShopsPage />} />
+        <Route path="payments" element={<PaymentsPage />} />
+        <Route path="payroll" element={<PayrollPage />} />
+        <Route path="reports" element={<ReportsPage />} />
+      </Route>
+    </Routes>
+  );
+}
+

@@ -21,7 +21,7 @@ export async function getCollections(req: Request, res: Response) {
     prisma.milkCollection.findMany({
       where,
       include: {
-        farmer: { select: { id: true, code: true, name: true, phone: true } },
+        farmer: { select: { id: true, code: true, name: true, phone: true, pricePerLitre: true } },
         route: { select: { id: true, name: true } },
         grader: { select: { id: true, name: true } },
       },
@@ -119,4 +119,3 @@ export async function getDailyRouteTotals(req: Request, res: Response) {
     }))
   );
 }
-

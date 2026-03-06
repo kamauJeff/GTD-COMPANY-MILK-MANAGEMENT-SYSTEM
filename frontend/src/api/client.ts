@@ -23,7 +23,7 @@ api.interceptors.response.use(
   }
 );
 
-// â”€â”€â”€ API helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── API helpers ──────────────────────────────────────────────────────────────
 
 export const authApi = {
   login: (code: string, password: string) => api.post('/api/auth/login', { code, password }),
@@ -60,15 +60,20 @@ export const factoryApi = {
 };
 
 export const shopsApi = {
-  list: () => api.get('/api/shops'),
-  sales: (params?: any) => api.get('/api/shop-sales', { params }),
-  createSale: (data: any) => api.post('/api/shop-sales', data),
+  list:           (params?: any) => api.get('/api/shops', { params }),
+  monthlyGrid:    (params: any)  => api.get('/api/shops/monthly-grid', { params }),
+  dailySummary:   (date?: string)=> api.get('/api/shops/daily-summary', { params: { date } }),
+  sales:          (params?: any) => api.get('/api/shop-sales', { params }),
+  createSale:     (data: any)    => api.post('/api/shop-sales', data),
+  bulkSales:      (data: any)    => api.post('/api/shop-sales/bulk', data),
 };
 
 export const paymentsApi = {
-  preview: (farmerId: number, params: any) => api.get(`/api/payments/preview/${farmerId}`, { params }),
-  runPayments: (data: any) => api.post('/api/payments/run', data),
-  addAdvance: (data: any) => api.post('/api/payments/advances', data),
+  list:         (params: any) => api.get('/api/payments', { params }),
+  routes:       () => api.get('/api/payments/routes'),
+  recordAdvance:(data: any) => api.post('/api/payments/advance', data),
+  deleteAdvance:(id: number) => api.delete(`/api/payments/advance/${id}`),
+  approve:      (data: any) => api.post('/api/payments/approve', data),
 };
 
 export const payrollApi = {
@@ -81,4 +86,3 @@ export const reportsApi = {
   farmerStatement: (farmerId: number, params: any) => api.get(`/api/reports/farmer-statement/${farmerId}`, { params }),
   factoryEfficiency: (params: any) => api.get('/api/reports/factory-efficiency', { params }),
 };
-

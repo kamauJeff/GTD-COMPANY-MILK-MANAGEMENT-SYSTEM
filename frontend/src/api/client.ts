@@ -31,12 +31,13 @@ export const authApi = {
 };
 
 export const farmersApi = {
-  list: (params?: any) => api.get('/api/farmers', { params }),
-  get: (id: number) => api.get(`/api/farmers/${id}`),
-  create: (data: any) => api.post('/api/farmers', data),
-  update: (id: number, data: any) => api.put(`/api/farmers/${id}`, data),
-  importExcel: (file: File) => { const fd = new FormData(); fd.append('file', file); return api.post('/api/farmers/import', fd); },
-  exportExcel: () => api.get('/api/farmers/export', { responseType: 'blob' }),
+  list:        (params?: any)              => api.get('/api/farmers', { params }),
+  get:         (id: number)                => api.get(`/api/farmers/${id}`),
+  create:      (data: any)                 => api.post('/api/farmers', data),
+  update:      (id: number, data: any)     => api.put(`/api/farmers/${id}`, data),
+  deactivate:  (id: number)                => api.delete(`/api/farmers/${id}`),
+  importExcel: (file: File)                => { const fd = new FormData(); fd.append('file', file); return api.post('/api/farmers/import', fd); },
+  exportExcel: ()                          => api.get('/api/farmers/export', { responseType: 'blob' }),
 };
 
 export const routesApi = {
@@ -46,10 +47,15 @@ export const routesApi = {
 };
 
 export const collectionsApi = {
-  list: (params?: any) => api.get('/api/collections', { params }),
-  dailyTotals: (date?: string) => api.get('/api/collections/daily-totals', { params: { date } }),
-  create: (data: any) => api.post('/api/collections', data),
-  batchSync: (records: any[]) => api.post('/api/collections/batch', { records }),
+  list:            (params?: any)   => api.get('/api/collections', { params }),
+  dailyTotals:     (date?: string)  => api.get('/api/collections/daily-totals', { params: { date } }),
+  create:          (data: any)      => api.post('/api/collections', data),
+  batchSync:       (records: any[]) => api.post('/api/collections/batch', { records }),
+  journal:         (params: any)    => api.get('/api/collections/journal', { params }),
+  debts:           (params: any)    => api.get('/api/collections/debts', { params }),
+  recordDeduction: (data: any)      => api.post('/api/collections/deduction', data),
+  deleteDeduction: (id: number)     => api.delete(`/api/collections/deduction/${id}`),
+  searchFarmers:   (q: string)      => api.get('/api/farmers', { params: { search: q, limit: 10 } }),
 };
 
 export const factoryApi = {
@@ -80,8 +86,15 @@ export const paymentsApi = {
 };
 
 export const payrollApi = {
-  list: (params?: any) => api.get('/api/payroll', { params }),
-  run: (month: number, year: number) => api.post('/api/payroll/run', { month, year }),
+  getPayroll:      (params: any)              => api.get('/api/payroll', { params }),
+  runPayroll:      (data: any)                => api.post('/api/payroll/run', data),
+  approvePayroll:  (data: any)                => api.post('/api/payroll/approve', data),
+  addDeduction:    (data: any)                => api.post('/api/payroll/deduction', data),
+  getRemittance:   (params: any)              => api.get('/api/payroll/remittance', { params, responseType: 'blob' }),
+  getEmployees:    (params?: any)             => api.get('/api/payroll/employees', { params }),
+  createEmployee:  (data: any)                => api.post('/api/payroll/employees', data),
+  updateEmployee:  (id: number, data: any)    => api.put(`/api/payroll/employees/${id}`, data),
+  deactivateEmployee: (id: number)            => api.delete(`/api/payroll/employees/${id}`),
 };
 
 export const reportsApi = {

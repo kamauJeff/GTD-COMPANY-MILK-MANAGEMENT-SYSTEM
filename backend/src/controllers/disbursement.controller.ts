@@ -8,14 +8,35 @@ import { logger } from '../config/logger';
 
 const CALLBACK_URL = `${process.env.BACKEND_URL ?? 'https://yourbackend.com'}/api/webhooks/kopokopo/disburse`;
 
-// ── Helper: normalise phone to 2547XXXXXXXX ───────────────────
+// ── Helper: normalise phone to +2547XXXXXXXX (KopoKopo format) ─
 function normalisePhone(raw: string | null | undefined): string | null {
   if (!raw) return null;
-  const d = String(raw).replace(/\D/g, '');
-  if (d.startsWith('2547') || d.startsWith('2541')) return d;
-  if (d.startsWith('07') || d.startsWith('01'))      return '254' + d.slice(1);
-  if (d.startsWith('7')  && d.length === 9)          return '254' + d;
-  return null;
+  // Strip leading apostrophe (Excel text-force prefix e.g. '0712345678 or '254...)
+  const cleaned = String(raw).replace(/^'/, '').trim();
+  const d = cleaned.replace(/\D/g, '');
+  let e164: string | null = null;
+  if (d.startsWith('2547') || d.startsWith('2541')) e164 = d;
+  else if (d.startsWith('07') || d.startsWith('01')) e164 = '254' + d.slice(1);
+  else if (d.startsWith('7') && d.length === 9)      e164 = '254' + d;
+  return e164 ? e164 : null;  // KopoKopo format: 2547XXXXXXXX (no + prefix)
+}
+
+// ── Helper: split full name → { firstName, lastName } ─────────
+// e.g. JOHN KAMAU NJOROGE → firstName="JOHN", lastName="KAMAU NJOROGE"
+function splitName(fullName: string): { firstName: string; lastName: string } {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { firstName: 'UNKNOWN', lastName: 'UNKNOWN' };
+  const firstName = parts[0];
+  const lastName  = parts.slice(1).join(' ') || firstName;
+  return { firstName, lastName };
+}
+
+// ── Helper: build KopoKopo narration ──────────────────────────
+const MONTHS_EN = ['','January','February','March','April','May','June',
+  'July','August','September','October','November','December'];
+
+function buildNarration(m: number, y: number, mid: boolean): string {
+  return `${mid ? 'Mid Month' : 'End Month'} Payment - ${MONTHS_EN[m]} ${y}`;
 }
 
 // ── GET /api/disbursements/preview ────────────────────────────
@@ -146,7 +167,6 @@ export async function disburseMpesaPayments(req: Request, res: Response) {
     },
   });
 
-  const MONTHS_EN = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
   const results: any[] = [];
 
   for (const farmer of farmers) {
@@ -171,12 +191,12 @@ export async function disburseMpesaPayments(req: Request, res: Response) {
         continue;
       }
 
-      const [firstName, ...rest] = farmer.name.trim().split(' ');
-      const lastName = rest.join(' ') || firstName;
+      const { firstName, lastName } = splitName(farmer.name);
+      const narration = buildNarration(m, y, mid);
 
       const transferId = await disburseMpesa({
         phone, amount: netPay, firstName, lastName,
-        remarks: `Milk payment ${MONTHS_EN[m]} ${y} - ${mid ? '15th' : 'End Month'}`,
+        remarks: narration,
         callbackUrl: CALLBACK_URL,
       });
 

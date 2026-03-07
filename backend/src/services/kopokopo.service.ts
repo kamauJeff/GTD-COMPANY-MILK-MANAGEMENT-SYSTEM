@@ -27,11 +27,11 @@ export async function getToken(): Promise<string> {
 
 // ── Send money to a farmer's M-Pesa ───────────────────────────
 export interface DisbursePayload {
-  phone:       string;   // 2547XXXXXXXX format
+  phone:       string;   // 2547XXXXXXXX format (no + prefix)
   amount:      number;
   firstName:   string;
-  lastName:    string;
-  remarks:     string;   // e.g. "Milk payment March 2026 - End Month"
+  lastName:    string;   // remaining names after first — e.g. "KAMAU NJOROGE"
+  remarks:     string;   // narration e.g. "Mid Month Payment - March 2026"
   callbackUrl: string;
 }
 
@@ -69,7 +69,7 @@ export async function disburseMpesa(payload: DisbursePayload): Promise<string> {
   // KopoKopo returns the transfer URL in the Location header
   const location: string = res.headers?.location ?? '';
   const transferId = location.split('/').pop() ?? res.data?.id ?? '';
-  logger.info(`KopoKopo: disbursed KES ${payload.amount} to ${payload.phone} → ref ${transferId}`);
+  logger.info(`KopoKopo: disbursed KES ${payload.amount} to ${payload.phone} (${payload.firstName} ${payload.lastName}) → ref ${transferId}`);
   return transferId;
 }
 

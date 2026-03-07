@@ -58,7 +58,7 @@ export async function deleteFarmer(req: Request, res: Response) {
   res.json({ message: 'Farmer deactivated' });
 }
 
-// â”€â”€â”€ Excel Import â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Excel Import ──────────────────────────────────────────────────────────────
 export async function importFarmers(req: Request, res: Response) {
   if (!req.file) throw new AppError(400, 'No file uploaded');
 
@@ -69,34 +69,52 @@ export async function importFarmers(req: Request, res: Response) {
   const rows: any[] = [];
   ws.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return; // skip header
+    const code = String(row.getCell(1).value ?? '').trim();
+    const name = String(row.getCell(2).value ?? '').trim();
+    if (!code || !name) return;
     rows.push({
-      code: String(row.getCell(1).value ?? '').trim(),
-      name: String(row.getCell(2).value ?? '').trim(),
-      idNumber: String(row.getCell(3).value ?? '').trim() || null,
-      phone: String(row.getCell(4).value ?? '').trim(),
-      routeId: Number(row.getCell(5).value),
-      pricePerLitre: Number(row.getCell(6).value),
-      paymentMethod: String(row.getCell(7).value ?? 'MPESA').toUpperCase(),
-      mpesaPhone: String(row.getCell(8).value ?? '').trim() || null,
-      paidOn15th: String(row.getCell(9).value ?? '').toLowerCase() === 'yes',
+      code,
+      name,
+      idNumber:      String(row.getCell(3).value ?? '').trim() || null,
+      phone:         String(row.getCell(4).value ?? '').trim(),
+      routeId:       Number(row.getCell(5).value),
+      pricePerLitre: Number(row.getCell(6).value) || 46,
+      paymentMethod: String(row.getCell(7).value ?? 'MPESA').toUpperCase().trim(),
+      mpesaPhone:    String(row.getCell(8).value ?? '').trim() || null,
+      bankName:      String(row.getCell(9).value ?? '').trim() || null,
+      bankAccount:   String(row.getCell(10).value ?? '').trim() || null,
+      paidOn15th:    String(row.getCell(11).value ?? '').toLowerCase() === 'yes',
     });
   });
 
-  let created = 0, updated = 0;
+  let created = 0, updated = 0, skipped = 0;
+  const errors: string[] = [];
+
   for (const data of rows) {
-    if (!data.code || !data.name) continue;
-    await prisma.farmer.upsert({
-      where: { code: data.code },
-      create: data,
-      update: data,
-    });
-    created++;
+    try {
+      if (!data.routeId || isNaN(data.routeId)) {
+        errors.push(`Row for ${data.code}: invalid routeId`);
+        skipped++;
+        continue;
+      }
+      const existing = await prisma.farmer.findUnique({ where: { code: data.code } });
+      if (existing) {
+        await prisma.farmer.update({ where: { code: data.code }, data });
+        updated++;
+      } else {
+        await prisma.farmer.create({ data });
+        created++;
+      }
+    } catch (e: any) {
+      errors.push(`Row for ${data.code}: ${e.message}`);
+      skipped++;
+    }
   }
 
-  res.json({ message: `Import complete: ${created} records processed` });
+  res.json({ message: `Import complete`, created, updated, skipped, errors: errors.slice(0, 20) });
 }
 
-// â”€â”€â”€ Excel Export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Excel Export ──────────────────────────────────────────────────────────────
 export async function exportFarmers(req: Request, res: Response) {
   const farmers = await prisma.farmer.findMany({
     where: { isActive: true },
@@ -131,4 +149,3 @@ export async function exportFarmers(req: Request, res: Response) {
   await wb.xlsx.write(res);
   res.end();
 }
-

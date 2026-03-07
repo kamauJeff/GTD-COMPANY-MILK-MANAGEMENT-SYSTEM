@@ -1,76 +1,140 @@
 // src/pages/PaymentsPage.tsx
-import { useState, useEffect, useCallback } from 'react';
-import { paymentsApi, routesApi } from '../api/client';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { paymentsApi } from '../api/client';
+import DisbursementPanel from '../components/DisbursementPanel';
 
-// ── Types ─────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────
 interface Route { id: number; name: string; _count?: { farmers: number } }
-interface FarmerPayment {
+interface FarmerRow {
   id: number; code: string; name: string; phone: string;
   routeId: number; routeName: string;
   paymentMethod: string; mpesaPhone?: string; bankName?: string; bankAccount?: string;
   pricePerLitre: number; paidOn15th: boolean;
-  totalLitres: number; grossPay: number;
+  daily: number[]; daysInMonth: number;
+  totalLitres15: number; totalLitres: number; grossPay: number;
   adv5: number; adv10: number; adv15: number; adv20: number; adv25: number; emerAI: number;
-  totalAdvances: number; netPay: number;
-  midLitres: number; midGross: number; midAdvances: number; midPayable: number;
+  totalAdv: number; amtPayable: number;
+  midGross: number; midAdv: number; midPayable: number; midCf: number;
+  endCf: number; endPayable: number;
   midPayment?: { id: number; status: string; paidAt?: string } | null;
   endPayment?: { id: number; status: string; paidAt?: string } | null;
 }
-interface Totals { farmers: number; totalLitres: number; grossPay: number; totalAdvances: number; netPay: number }
+interface Totals {
+  farmers: number; totalLitres: number; grossPay: number;
+  totalAdv: number; amtPayable: number; midPayable: number; endPayable: number;
+  dailyTotals: number[];
+}
 
-const MONTHS = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
+const MONTHS = ['','January','February','March','April','May','June',
+  'July','August','September','October','November','December'];
 const NOW = new Date();
+const fmt  = (n: number) => n === 0 ? '' : n.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtL = (n: number) => n === 0 ? '' : Number(n).toFixed(1);
+const fmtC = (n: number) => n.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const fmt  = (n: number) => n.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const fmtL = (n: number) => n.toLocaleString('en-KE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-
-function StatusBadge({ status }: { status?: string }) {
-  if (!status) return <span style={badge('E2E8F0','64748B')}>—</span>;
-  const map: Record<string, [string, string]> = {
-    PENDING:  ['FEF9C3','92400E'],
-    APPROVED: ['DCFCE7','166534'],
-    PAID:     ['DBEAFE','1E40AF'],
-  };
-  const [bg, color] = map[status] ?? ['F3F4F6','374151'];
-  return <span style={badge(bg, color)}>{status}</span>;
-}
-function badge(bg: string, color: string): React.CSSProperties {
-  return { padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700,
-           backgroundColor: '#' + bg, color: '#' + color, whiteSpace: 'nowrap' as const };
-}
-
-function Row({ label, value, bold, color }: { label: string; value: string; bold?: boolean; color?: string }) {
+// ── Status pill ────────────────────────────────────────────────
+function StatusPill({ status }: { status?: string }) {
+  if (!status) return <span style={{ color: '#9ca3af', fontSize: 10 }}>—</span>;
+  const colors: Record<string, string> = { PENDING: '#d97706', APPROVED: '#16a34a', PAID: '#2563eb' };
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid #f3f4f6' }}>
-      <span style={{ fontSize: 13, color: '#6b7280' }}>{label}</span>
-      <span style={{ fontSize: 13, fontWeight: bold ? 700 : 500, color: color ?? '#111' }}>{value}</span>
+    <span style={{ fontSize: 10, fontWeight: 700, color: colors[status] ?? '#6b7280',
+      background: (colors[status] ?? '#e5e7eb') + '20', padding: '1px 6px', borderRadius: 10 }}>
+      {status}
+    </span>
+  );
+}
+
+// ── Advance modal ──────────────────────────────────────────────
+function AdvanceModal({ farmer, month, year, onClose, onSaved }: {
+  farmer: FarmerRow; month: number; year: number;
+  onClose: () => void; onSaved: () => void;
+}) {
+  const [amount, setAmount] = useState('');
+  const [date, setDate]     = useState(`${year}-${String(month).padStart(2,'0')}-05`);
+  const [notes, setNotes]   = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr]       = useState('');
+
+  async function save() {
+    if (!amount || !date) return;
+    setSaving(true); setErr('');
+    try {
+      await paymentsApi.recordAdvance({ farmerId: farmer.id, amount: Number(amount), advanceDate: date, notes });
+      onSaved();
+    } catch (e: any) { setErr(e.response?.data?.error ?? 'Failed'); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div style={M.overlay} onClick={onClose}>
+      <div style={M.modal} onClick={e => e.stopPropagation()}>
+        <div style={M.header}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 15 }}>Record Advance</div>
+            <div style={{ fontSize: 12, color: '#6b7280' }}>{farmer.name} · {farmer.routeName}</div>
+          </div>
+          <button style={M.close} onClick={onClose}>✕</button>
+        </div>
+        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {err && <div style={{ color: '#dc2626', fontSize: 13 }}>{err}</div>}
+          <div>
+            <label style={M.label}>Amount (KES)</label>
+            <input style={M.input} type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" autoFocus />
+          </div>
+          <div>
+            <label style={M.label}>Date</label>
+            <input style={M.input} type="date" value={date} onChange={e => setDate(e.target.value)} />
+          </div>
+          <div>
+            <label style={M.label}>Notes (optional)</label>
+            <input style={M.input} value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. Emergency" />
+          </div>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <button style={M.cancelBtn} onClick={onClose}>Cancel</button>
+            <button style={{ ...M.saveBtn, opacity: (!amount || saving) ? 0.5 : 1 }}
+              onClick={save} disabled={!amount || saving}>
+              {saving ? 'Saving...' : 'Save Advance'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
+const M: Record<string, React.CSSProperties> = {
+  overlay:   { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  modal:     { background: '#fff', borderRadius: 14, width: 380, boxShadow: '0 12px 40px rgba(0,0,0,0.2)' },
+  header:    { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '16px 20px', borderBottom: '1px solid #e5e7eb' },
+  close:     { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#9ca3af' },
+  label:     { display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', textTransform: 'uppercase' as const, letterSpacing: '0.04em', marginBottom: 5 },
+  input:     { width: '100%', border: '1.5px solid #e5e7eb', borderRadius: 8, padding: '9px 11px', fontSize: 14, boxSizing: 'border-box' as const },
+  saveBtn:   { background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 20px', fontWeight: 700, fontSize: 13, cursor: 'pointer' },
+  cancelBtn: { background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: 8, padding: '9px 16px', fontWeight: 600, fontSize: 13, cursor: 'pointer' },
+};
+
+// ══ MAIN PAGE ══════════════════════════════════════════════════
 export default function PaymentsPage() {
   const [month, setMonth]     = useState(NOW.getMonth() + 1);
   const [year, setYear]       = useState(NOW.getFullYear());
   const [routeId, setRouteId] = useState<number | ''>('');
-  const [view, setView]       = useState<'end' | 'mid'>('end');
   const [search, setSearch]   = useState('');
+  const [hideZero, setHideZero] = useState(true);
 
   const [routes, setRoutes]   = useState<Route[]>([]);
-  const [farmers, setFarmers] = useState<FarmerPayment[]>([]);
+  const [farmers, setFarmers] = useState<FarmerRow[]>([]);
   const [totals, setTotals]   = useState<Totals | null>(null);
+  const [daysInMonth, setDaysInMonth] = useState(30);
   const [loading, setLoading] = useState(false);
-  const [selected, setSelected] = useState<FarmerPayment | null>(null);
 
-  const [advModal, setAdvModal]   = useState(false);
-  const [advFarmer, setAdvFarmer] = useState<FarmerPayment | null>(null);
-  const [advAmount, setAdvAmount] = useState('');
-  const [advDate, setAdvDate]     = useState('');
-  const [advNotes, setAdvNotes]   = useState('');
-  const [advSaving, setAdvSaving] = useState(false);
-  const [approving, setApproving] = useState(false);
+  const [advFarmer, setAdvFarmer] = useState<FarmerRow | null>(null);
+  const [approving, setApproving]       = useState(false);
+  const [showDisburse, setShowDisburse] = useState(false);
+
+  const tableRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    paymentsApi.routes().then(r => setRoutes(r.data)).catch(() => {});
+    paymentsApi.routes().then(r => setRoutes(r.data ?? [])).catch(() => {});
   }, []);
 
   const load = useCallback(async () => {
@@ -81,262 +145,321 @@ export default function PaymentsPage() {
       const r = await paymentsApi.list(params);
       setFarmers(r.data.farmers ?? []);
       setTotals(r.data.totals ?? null);
+      setDaysInMonth(r.data.daysInMonth ?? 30);
     } catch {}
     finally { setLoading(false); }
   }, [month, year, routeId]);
 
   useEffect(() => { load(); }, [load]);
 
-  const active = farmers.filter(f => {
-    const matchSearch = !search || f.name.toLowerCase().includes(search.toLowerCase()) || f.code.toLowerCase().includes(search.toLowerCase());
-    const matchView   = view === 'mid' ? f.paidOn15th : true;
-    return f.totalLitres > 0 && matchSearch && matchView;
+  const displayed = farmers.filter(f => {
+    if (hideZero && f.totalLitres === 0) return false;
+    if (search) return f.name.toLowerCase().includes(search.toLowerCase()) || f.code.toLowerCase().includes(search.toLowerCase());
+    return true;
   });
 
-  async function saveAdvance() {
-    if (!advFarmer || !advAmount || !advDate) return;
-    setAdvSaving(true);
-    try {
-      await paymentsApi.recordAdvance({ farmerId: advFarmer.id, amount: Number(advAmount), advanceDate: advDate, notes: advNotes });
-      setAdvModal(false); setAdvAmount(''); setAdvDate(''); setAdvNotes('');
-      load();
-    } catch (e: any) { alert(e.response?.data?.error ?? 'Failed to save advance'); }
-    finally { setAdvSaving(false); }
-  }
-
-  async function approveAll() {
-    if (!confirm(`Approve all ${view === 'mid' ? 'mid-month' : 'end-month'} payments for ${MONTHS[month]} ${year}?`)) return;
+  async function approveAll(isMidMonth: boolean) {
+    if (!confirm(`Approve all ${isMidMonth ? 'mid-month' : 'end-month'} payments?`)) return;
     setApproving(true);
     try {
-      await paymentsApi.approve({ month, year, routeId: routeId || undefined, isMidMonth: view === 'mid' });
+      await paymentsApi.approve({ month, year, routeId: routeId || undefined, isMidMonth });
       load();
     } catch (e: any) { alert(e.response?.data?.error ?? 'Failed'); }
     finally { setApproving(false); }
   }
 
-  const pendingCount = active.filter(f => {
-    const pay = view === 'mid' ? f.midPayment : f.endPayment;
-    return !pay || pay.status === 'PENDING';
-  }).length;
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+  // ── sticky col widths (must match th/td)
+  const COL = { no: 36, name: 160, price: 46 };
 
   return (
-    <div style={S.page}>
+    <div style={P.page}>
       {/* Header */}
-      <div style={S.header}>
+      <div style={P.header}>
         <div>
-          <h1 style={S.title}>Farmer Payments</h1>
-          <p style={S.subtitle}>Advances, mid-month and end-month payouts · {MONTHS[month]} {year}</p>
+          <h1 style={P.title}>Farmer Payments Journal</h1>
+          <p style={P.subtitle}>{MONTHS[month]} {year} · Daily milk · Advances · Net pay</p>
         </div>
-        <button style={{ ...S.approveBtn, opacity: pendingCount === 0 ? 0.5 : 1 }} onClick={approveAll} disabled={approving || pendingCount === 0}>
-          {approving ? 'Processing...' : `✓ Approve ${pendingCount} Pending`}
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button style={P.midBtn} onClick={() => approveAll(true)} disabled={approving}>
+            ✓ Approve 15th
+          </button>
+          <button style={P.endBtn} onClick={() => approveAll(false)} disabled={approving}>
+            ✓ Approve End Month
+          </button>
+          <button style={P.disburseBtn} onClick={() => setShowDisburse(true)}>
+            💸 Disburse Payments
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
-      <div style={S.filterBar}>
-        <select style={S.select} value={month} onChange={e => setMonth(Number(e.target.value))}>
+      <div style={P.filterBar}>
+        <select style={P.sel} value={month} onChange={e => setMonth(Number(e.target.value))}>
           {MONTHS.slice(1).map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
         </select>
-        <select style={S.select} value={year} onChange={e => setYear(Number(e.target.value))}>
+        <select style={P.sel} value={year} onChange={e => setYear(Number(e.target.value))}>
           {[NOW.getFullYear()-1, NOW.getFullYear()].map(y => <option key={y} value={y}>{y}</option>)}
         </select>
-        <select style={S.select} value={routeId} onChange={e => setRouteId(e.target.value ? Number(e.target.value) : '')}>
+        <select style={P.sel} value={routeId} onChange={e => setRouteId(e.target.value ? Number(e.target.value) : '')}>
           <option value="">All Routes</option>
-          {routes.map(r => <option key={r.id} value={r.id}>{r.name} ({r._count?.farmers ?? 0})</option>)}
+          {routes.map(r => <option key={r.id} value={r.id}>{r.name} ({r._count?.farmers})</option>)}
         </select>
-        <div style={S.viewToggle}>
-          <button style={{ ...S.toggleBtn, ...(view === 'end' ? S.toggleActive : {}) }} onClick={() => setView('end')}>End Month</button>
-          <button style={{ ...S.toggleBtn, ...(view === 'mid' ? S.toggleActive : {}) }} onClick={() => setView('mid')}>Mid Month (15th)</button>
-        </div>
-        <input style={S.search} value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Search farmer name or code..." />
+        <input style={P.search} value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search farmer..." />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#374151', cursor: 'pointer' }}>
+          <input type="checkbox" checked={hideZero} onChange={e => setHideZero(e.target.checked)} />
+          Hide zero-milk farmers
+        </label>
       </div>
 
-      {/* Summary cards */}
+      {/* Summary strip */}
       {totals && (
-        <div style={S.cards}>
+        <div style={P.strip}>
           {[
-            { label: 'Active Farmers', value: String(active.length), color: '#16a34a', icon: '👨‍🌾' },
-            { label: 'Total Litres',   value: fmtL(active.reduce((s,f) => s + (view==='mid'?f.midLitres:f.totalLitres), 0)) + ' L', color: '#2563eb', icon: '🥛' },
-            { label: 'Gross Pay',      value: 'KES ' + fmt(active.reduce((s,f) => s + (view==='mid'?f.midGross:f.grossPay), 0)), color: '#7c3aed', icon: '💰' },
-            { label: 'Total Advances', value: 'KES ' + fmt(active.reduce((s,f) => s + (view==='mid'?f.midAdvances:f.totalAdvances), 0)), color: '#ea580c', icon: '📤' },
-            { label: 'Net Payable',    value: 'KES ' + fmt(active.reduce((s,f) => s + (view==='mid'?f.midPayable:f.netPay), 0)), color: '#0891b2', icon: '✅' },
+            { l: 'Farmers', v: String(totals.farmers) },
+            { l: 'Total Litres', v: totals.totalLitres.toFixed(1) + ' L' },
+            { l: 'Gross Pay', v: 'KES ' + fmtC(totals.grossPay) },
+            { l: 'Advances', v: 'KES ' + fmtC(totals.totalAdv) },
+            { l: 'Mid Payable', v: 'KES ' + fmtC(totals.midPayable) },
+            { l: 'End Payable', v: 'KES ' + fmtC(totals.endPayable) },
           ].map(c => (
-            <div key={c.label} style={S.card}>
-              <span style={{ fontSize: 26 }}>{c.icon}</span>
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: c.color }}>{c.value}</div>
-                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{c.label}</div>
-              </div>
+            <div key={c.l} style={P.stripItem}>
+              <div style={P.stripVal}>{c.v}</div>
+              <div style={P.stripLabel}>{c.l}</div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Table */}
-      <div style={S.tableWrap}>
-        {loading ? (
-          <div style={S.center}><div style={S.spinner} /></div>
-        ) : active.length === 0 ? (
-          <div style={S.empty}><div style={{ fontSize: 48 }}>💸</div><p>No payment data for {MONTHS[month]} {year}</p></div>
-        ) : (
-          <table style={S.table}>
+      {/* ── THE JOURNAL TABLE ─────────────────────────────────── */}
+      {loading ? (
+        <div style={P.center}><div style={P.spinner} /></div>
+      ) : (
+        <div style={P.tableWrap} ref={tableRef}>
+          <table style={P.table}>
             <thead>
-              <tr>{['Code','Name','Route','Litres','Gross Pay','Advances','Net Pay','Method','Status',''].map(h => <th key={h} style={S.th}>{h}</th>)}</tr>
+              {/* Row 1: section headers */}
+              <tr style={{ backgroundColor: '#1e3a5f', color: '#fff' }}>
+                <th style={{ ...P.stickyTh, ...P.noTh, background: '#1e3a5f' }} rowSpan={2}>#</th>
+                <th style={{ ...P.stickyTh2, width: COL.name, background: '#1e3a5f' }} rowSpan={2}>FARMER</th>
+                <th style={{ ...P.dayTh, background: '#1e3a5f', width: COL.price }} rowSpan={2} title="Price/L">P/L</th>
+                <th style={{ ...P.sectionTh, background: '#1e4d2b' }} colSpan={daysInMonth + 2}>DAILY LITRES</th>
+                <th style={{ ...P.sectionTh, background: '#4c1d1d' }} colSpan={7}>ADVANCES</th>
+                <th style={{ ...P.sectionTh, background: '#1a3a5c' }} colSpan={3}>MID MONTH (15th)</th>
+                <th style={{ ...P.sectionTh, background: '#2d1a4c' }} colSpan={3}>END MONTH</th>
+                <th style={{ ...P.sectionTh, background: '#1e3a5f' }} colSpan={2}>STATUS</th>
+                <th style={{ ...P.sectionTh, background: '#1e3a5f' }} rowSpan={2}></th>
+              </tr>
+              {/* Row 2: column labels */}
+              <tr style={{ backgroundColor: '#f0f4f8', fontSize: 11 }}>
+                {days.map(d => (
+                  <th key={d} style={{ ...P.dayTh, background: d === 15 ? '#fef3c7' : d <= 15 ? '#f0fdf4' : '#f8f8f8',
+                    borderRight: d === 15 ? '2px solid #d97706' : undefined }}>
+                    {d}
+                  </th>
+                ))}
+                <th style={{ ...P.dayTh, background: '#dcfce7', fontWeight: 800 }}>TL</th>
+                <th style={{ ...P.dayTh, background: '#dcfce7', fontWeight: 800 }}>TM</th>
+                <th style={{ ...P.advTh, background: '#fee2e2' }}>Bal b/f</th>
+                <th style={{ ...P.advTh, background: '#fee2e2' }}>5th</th>
+                <th style={{ ...P.advTh, background: '#fee2e2' }}>10th</th>
+                <th style={{ ...P.advTh, background: '#fee2e2' }}>15th</th>
+                <th style={{ ...P.advTh, background: '#fee2e2' }}>20th</th>
+                <th style={{ ...P.advTh, background: '#fee2e2' }}>25th</th>
+                <th style={{ ...P.advTh, background: '#fca5a5', fontWeight: 800 }}>Total Adv</th>
+                <th style={{ ...P.payTh, background: '#bfdbfe' }}>Gross</th>
+                <th style={{ ...P.payTh, background: '#bfdbfe' }}>Adv</th>
+                <th style={{ ...P.payTh, background: '#93c5fd', fontWeight: 800 }}>Payable</th>
+                <th style={{ ...P.payTh, background: '#e9d5ff' }}>Gross</th>
+                <th style={{ ...P.payTh, background: '#e9d5ff' }}>Adv</th>
+                <th style={{ ...P.payTh, background: '#c4b5fd', fontWeight: 800 }}>Payable</th>
+                <th style={{ ...P.payTh, background: '#f0fdf4' }}>15th</th>
+                <th style={{ ...P.payTh, background: '#dcfce7' }}>End</th>
+              </tr>
             </thead>
+
             <tbody>
-              {active.map((f, i) => {
-                const pay = view === 'mid' ? f.midPayment : f.endPayment;
-                const netV   = view === 'mid' ? f.midPayable    : f.netPay;
-                const grossV = view === 'mid' ? f.midGross      : f.grossPay;
-                const advV   = view === 'mid' ? f.midAdvances   : f.totalAdvances;
-                const litV   = view === 'mid' ? f.midLitres     : f.totalLitres;
+              {displayed.map((f, idx) => {
+                const isOdd = idx % 2 === 1;
+                const rowBg = isOdd ? '#f9fafb' : '#fff';
+                const negStyle = (n: number): React.CSSProperties =>
+                  n < 0 ? { color: '#dc2626', fontWeight: 700 } : {};
+
                 return (
-                  <tr key={f.id} style={{ backgroundColor: i % 2 === 0 ? '#fff' : '#f9fafb' }}>
-                    <td style={S.td}><span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, backgroundColor: '#f0fdf4', color: '#16a34a' }}>{f.code}</span></td>
-                    <td style={{ ...S.td, fontWeight: 600 }}>{f.name}</td>
-                    <td style={{ ...S.td, color: '#6b7280', fontSize: 12 }}>{f.routeName}</td>
-                    <td style={{ ...S.td, color: '#2563eb', fontWeight: 700 }}>{fmtL(litV)}</td>
-                    <td style={{ ...S.td, color: '#16a34a', fontWeight: 700 }}>KES {fmt(grossV)}</td>
-                    <td style={{ ...S.td, color: advV > 0 ? '#ea580c' : '#9ca3af' }}>{advV > 0 ? `(${fmt(advV)})` : '—'}</td>
-                    <td style={{ ...S.td, fontWeight: 800, color: netV < 0 ? '#dc2626' : '#0f172a' }}>KES {fmt(netV)}</td>
-                    <td style={S.td}>
-                      <span style={badge(f.paymentMethod === 'MPESA' ? 'DCFCE7' : 'DBEAFE', f.paymentMethod === 'MPESA' ? '166534' : '1E40AF')}>
-                        {f.paymentMethod === 'MPESA' ? 'MPESA' : (f.bankName ?? 'BANK')}
-                      </span>
+                  <tr key={f.id} style={{ backgroundColor: rowBg, fontSize: 12 }}>
+                    {/* Sticky: # */}
+                    <td style={{ ...P.stickyTd, ...P.noTd, background: rowBg }}>{idx + 1}</td>
+                    {/* Sticky: Name */}
+                    <td style={{ ...P.stickyTd2, background: rowBg }}>
+                      <div style={{ fontWeight: 700, fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 155 }}>{f.name}</div>
+                      <div style={{ fontSize: 10, color: '#6b7280' }}>{f.code} · {f.routeName}</div>
                     </td>
-                    <td style={S.td}><StatusBadge status={pay?.status} /></td>
-                    <td style={S.td}>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button style={S.iconBtn} onClick={() => { setAdvFarmer(f); setAdvModal(true); }}>+ Adv</button>
-                        <button style={{ ...S.iconBtn, backgroundColor: '#f0fdf4', color: '#16a34a', borderColor: '#bbf7d0' }} onClick={() => setSelected(f)}>View</button>
-                      </div>
+                    {/* Price/L */}
+                    <td style={{ ...P.numTd, fontSize: 11, color: '#6b7280' }}>{f.pricePerLitre}</td>
+
+                    {/* Daily litres */}
+                    {f.daily.map((v, di) => (
+                      <td key={di} style={{
+                        ...P.numTd,
+                        color: v > 0 ? '#111' : '#e5e7eb',
+                        fontWeight: v > 0 ? 600 : 400,
+                        background: di === 14 ? '#fffbeb' : undefined,
+                        borderRight: di === 14 ? '2px solid #d97706' : undefined,
+                      }}>
+                        {v > 0 ? fmtL(v) : '·'}
+                      </td>
+                    ))}
+
+                    {/* TL — total litres */}
+                    <td style={{ ...P.numTd, fontWeight: 800, color: '#16a34a', background: '#f0fdf4' }}>
+                      {f.totalLitres > 0 ? f.totalLitres.toFixed(1) : ''}
+                    </td>
+                    {/* TM — total money */}
+                    <td style={{ ...P.numTd, fontWeight: 800, color: '#16a34a', background: '#f0fdf4' }}>
+                      {f.grossPay > 0 ? fmt(f.grossPay) : ''}
+                    </td>
+
+                    {/* Advances */}
+                    <td style={P.advTd}>0</td>
+                    <td style={P.advTd}>{fmt(f.adv5)}</td>
+                    <td style={P.advTd}>{fmt(f.adv10)}</td>
+                    <td style={P.advTd}>{fmt(f.adv15)}</td>
+                    <td style={P.advTd}>{fmt(f.adv20)}</td>
+                    <td style={P.advTd}>{fmt(f.adv25)}</td>
+                    <td style={{ ...P.advTd, fontWeight: 800, color: f.totalAdv > 0 ? '#dc2626' : '#9ca3af', background: '#fee2e2' }}>
+                      {fmt(f.totalAdv)}
+                    </td>
+
+                    {/* Mid-month */}
+                    <td style={P.payTd}>{fmt(f.midGross)}</td>
+                    <td style={P.payTd}>{f.midAdv > 0 ? fmt(f.midAdv) : ''}</td>
+                    <td style={{ ...P.payTd, fontWeight: 800, background: '#eff6ff', ...negStyle(f.midCf) }}>
+                      {f.midCf !== 0 ? fmt(f.midCf) : ''}
+                    </td>
+
+                    {/* End-month */}
+                    <td style={P.payTd}>{fmt(f.grossPay - f.midGross)}</td>
+                    <td style={P.payTd}>{(f.adv20 + f.adv25 + f.emerAI) > 0 ? fmt(f.adv20 + f.adv25 + f.emerAI) : ''}</td>
+                    <td style={{ ...P.payTd, fontWeight: 800, background: '#f5f3ff', ...negStyle(f.endCf) }}>
+                      {f.endCf !== 0 ? fmt(f.endCf) : ''}
+                    </td>
+
+                    {/* Status */}
+                    <td style={{ ...P.payTd, textAlign: 'center' }}><StatusPill status={f.midPayment?.status} /></td>
+                    <td style={{ ...P.payTd, textAlign: 'center' }}><StatusPill status={f.endPayment?.status} /></td>
+
+                    {/* Actions */}
+                    <td style={{ ...P.payTd, whiteSpace: 'nowrap' }}>
+                      <button style={P.advBtn} onClick={() => setAdvFarmer(f)}>+ Adv</button>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
+
+            {/* Totals footer */}
+            {totals && (
+              <tfoot>
+                <tr style={{ backgroundColor: '#1e3a5f', color: '#fff', fontWeight: 800, fontSize: 12 }}>
+                  <td style={{ ...P.stickyTd, ...P.noTd, background: '#1e3a5f' }} />
+                  <td style={{ ...P.stickyTd2, background: '#1e3a5f', fontWeight: 800, fontSize: 13 }}>
+                    TOTALS ({totals.farmers} farmers)
+                  </td>
+                  <td style={P.numTd} />
+                  {totals.dailyTotals.map((v, i) => (
+                    <td key={i} style={{ ...P.numTd, color: v > 0 ? '#86efac' : '#334155',
+                      borderRight: i === 14 ? '2px solid #d97706' : undefined }}>
+                      {v > 0 ? v.toFixed(1) : ''}
+                    </td>
+                  ))}
+                  <td style={{ ...P.numTd, color: '#86efac' }}>{totals.totalLitres.toFixed(1)}</td>
+                  <td style={{ ...P.numTd, color: '#86efac' }}>{fmtC(totals.grossPay)}</td>
+                  <td style={P.numTd} />
+                  <td colSpan={5} style={P.numTd} />
+                  <td style={{ ...P.numTd, color: '#fca5a5' }}>{fmtC(totals.totalAdv)}</td>
+                  <td colSpan={2} style={P.numTd} />
+                  <td style={{ ...P.numTd, color: '#93c5fd' }}>{fmtC(totals.midPayable)}</td>
+                  <td colSpan={2} style={P.numTd} />
+                  <td style={{ ...P.numTd, color: '#c4b5fd' }}>{fmtC(totals.endPayable)}</td>
+                  <td colSpan={3} />
+                </tr>
+              </tfoot>
+            )}
           </table>
-        )}
-      </div>
 
-      {/* Farmer detail drawer */}
-      {selected && (
-        <div style={S.overlay} onClick={() => setSelected(null)}>
-          <div style={S.drawer} onClick={e => e.stopPropagation()}>
-            <div style={S.drawerHeader}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>{selected.name}</h2>
-                <span style={{ fontSize: 12, color: '#6b7280' }}>{selected.code} · {selected.routeName}</span>
-              </div>
-              <button style={S.closeBtn} onClick={() => setSelected(null)}>✕</button>
+          {displayed.length === 0 && !loading && (
+            <div style={P.empty}>
+              <div style={{ fontSize: 40 }}>💸</div>
+              <p>No farmers found for {MONTHS[month]} {year}</p>
             </div>
-            <div style={S.drawerBody}>
-              <div style={S.section}>
-                <div style={S.sectionTitle}>📊 {MONTHS[month]} {year} Summary</div>
-                <Row label="Total Litres"   value={fmtL(selected.totalLitres) + ' L'} />
-                <Row label="Price / Litre"  value={'KES ' + selected.pricePerLitre.toFixed(2)} />
-                <Row label="Gross Pay"      value={'KES ' + fmt(selected.grossPay)} bold />
-                <Row label="Total Advances" value={'(KES ' + fmt(selected.totalAdvances) + ')'} color="#ea580c" />
-                <Row label="Net Pay"        value={'KES ' + fmt(selected.netPay)} bold color={selected.netPay < 0 ? '#dc2626' : '#16a34a'} />
-              </div>
-
-              {selected.totalAdvances > 0 && (
-                <div style={S.section}>
-                  <div style={S.sectionTitle}>📤 Advances Breakdown</div>
-                  {[['5th', selected.adv5],['10th', selected.adv10],['15th', selected.adv15],
-                    ['20th', selected.adv20],['25th', selected.adv25],['Emer/AI', selected.emerAI]]
-                    .filter(([, v]) => (v as number) > 0)
-                    .map(([l, v]) => <Row key={l as string} label={`${l} Advance`} value={'KES ' + fmt(v as number)} />)}
-                </div>
-              )}
-
-              {selected.paidOn15th && (
-                <div style={S.section}>
-                  <div style={S.sectionTitle}>📅 Mid-Month (1–15th)</div>
-                  <Row label="Mid Litres"   value={fmtL(selected.midLitres) + ' L'} />
-                  <Row label="Mid Gross"    value={'KES ' + fmt(selected.midGross)} />
-                  <Row label="Mid Advances" value={'(KES ' + fmt(selected.midAdvances) + ')'} />
-                  <Row label="Mid Payable"  value={'KES ' + fmt(selected.midPayable)} bold color={selected.midPayable < 0 ? '#dc2626' : '#16a34a'} />
-                  <div style={{ marginTop: 10 }}><StatusBadge status={selected.midPayment?.status} /></div>
-                </div>
-              )}
-
-              <div style={S.section}>
-                <div style={S.sectionTitle}>💳 Payment Details</div>
-                <Row label="Method" value={selected.paymentMethod} />
-                {selected.paymentMethod === 'MPESA'
-                  ? <Row label="M-Pesa No." value={selected.mpesaPhone ?? '—'} />
-                  : <><Row label="Bank" value={selected.bankName ?? '—'} /><Row label="Account" value={selected.bankAccount ?? '—'} /></>}
-                <Row label="Phone"    value={selected.phone} />
-                <Row label="Pay Date" value={selected.paidOn15th ? '15th (Mid-month)' : 'End of month'} />
-              </div>
-
-              <button style={S.actionBtn} onClick={() => { setAdvFarmer(selected); setAdvModal(true); setSelected(null); }}>
-                + Record Advance
-              </button>
-            </div>
-          </div>
+          )}
         </div>
       )}
 
       {/* Advance modal */}
-      {advModal && advFarmer && (
-        <div style={S.overlay} onClick={() => setAdvModal(false)}>
-          <div style={S.modal} onClick={e => e.stopPropagation()}>
-            <div style={S.drawerHeader}>
-              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>Record Advance — {advFarmer.name}</h2>
-              <button style={S.closeBtn} onClick={() => setAdvModal(false)}>✕</button>
-            </div>
-            <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div><label style={S.label}>Amount (KES)</label><input style={S.input} type="number" value={advAmount} onChange={e => setAdvAmount(e.target.value)} placeholder="0.00" /></div>
-              <div><label style={S.label}>Date</label><input style={S.input} type="date" value={advDate} onChange={e => setAdvDate(e.target.value)} /></div>
-              <div><label style={S.label}>Notes (optional)</label><input style={S.input} value={advNotes} onChange={e => setAdvNotes(e.target.value)} placeholder="e.g. Emergency advance" /></div>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                <button style={S.cancelBtn} onClick={() => setAdvModal(false)}>Cancel</button>
-                <button style={{ ...S.actionBtn, opacity: (!advAmount || !advDate) ? 0.5 : 1 }} onClick={saveAdvance} disabled={advSaving || !advAmount || !advDate}>
-                  {advSaving ? 'Saving...' : 'Save Advance'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {advFarmer && (
+        <AdvanceModal
+          farmer={advFarmer} month={month} year={year}
+          onClose={() => setAdvFarmer(null)}
+          onSaved={() => { setAdvFarmer(null); load(); }}
+        />
+      )}
+
+      {/* Disbursement panel */}
+      {showDisburse && (
+        <DisbursementPanel
+          month={month} year={year}
+          onClose={() => setShowDisburse(false)}
+        />
       )}
     </div>
   );
 }
 
-const S: Record<string, React.CSSProperties> = {
-  page:        { padding: 24, maxWidth: 1400, margin: '0 auto' },
-  header:      { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
-  title:       { fontSize: 24, fontWeight: 800, color: '#111', margin: 0 },
-  subtitle:    { fontSize: 14, color: '#6b7280', marginTop: 4 },
-  approveBtn:  { background: '#16a34a', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 22px', fontWeight: 700, fontSize: 14, cursor: 'pointer' },
-  filterBar:   { display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20, alignItems: 'center' },
-  select:      { border: '1.5px solid #e5e7eb', borderRadius: 8, padding: '8px 12px', fontSize: 13, background: '#fff', cursor: 'pointer' },
-  viewToggle:  { display: 'flex', background: '#f3f4f6', borderRadius: 8, padding: 3, gap: 2 },
-  toggleBtn:   { border: 'none', background: 'transparent', borderRadius: 6, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#6b7280' },
-  toggleActive:{ background: '#fff', color: '#16a34a', boxShadow: '0 1px 4px rgba(0,0,0,0.1)' },
-  search:      { border: '1.5px solid #e5e7eb', borderRadius: 8, padding: '8px 14px', fontSize: 13, flex: 1, minWidth: 200 },
-  cards:       { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 },
-  card:        { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' },
-  tableWrap:   { background: '#fff', borderRadius: 14, border: '1px solid #e5e7eb', overflow: 'auto', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' },
-  table:       { width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 1000 },
-  th:          { padding: '12px 14px', textAlign: 'left', fontWeight: 700, color: '#374151', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' },
-  td:          { padding: '11px 14px', borderBottom: '1px solid #f3f4f6', verticalAlign: 'middle' },
-  iconBtn:     { background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', color: '#374151', whiteSpace: 'nowrap' },
-  center:      { display: 'flex', justifyContent: 'center', padding: 60 },
-  spinner:     { width: 36, height: 36, border: '3px solid #e5e7eb', borderTopColor: '#16a34a', borderRadius: '50%', animation: 'spin 0.8s linear infinite' },
-  empty:       { textAlign: 'center', padding: 60, color: '#9ca3af' },
-  overlay:     { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 100, display: 'flex', justifyContent: 'flex-end' },
-  drawer:      { background: '#fff', width: 440, height: '100vh', overflowY: 'auto', boxShadow: '-4px 0 20px rgba(0,0,0,0.15)' },
-  modal:       { position: 'fixed', top: '10%', left: '50%', transform: 'translateX(-50%)', background: '#fff', borderRadius: 16, width: 440, boxShadow: '0 8px 40px rgba(0,0,0,0.2)', zIndex: 101 },
-  drawerHeader:{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 24px', borderBottom: '1px solid #e5e7eb', background: '#f9fafb' },
-  drawerBody:  { padding: 24, display: 'flex', flexDirection: 'column', gap: 16 },
-  closeBtn:    { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#9ca3af', padding: 4 },
-  section:     { background: '#f9fafb', borderRadius: 10, padding: 16 },
-  sectionTitle:{ fontWeight: 700, fontSize: 13, color: '#374151', marginBottom: 10 },
-  label:       { display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 },
-  input:       { width: '100%', border: '1.5px solid #e5e7eb', borderRadius: 8, padding: '9px 12px', fontSize: 14, boxSizing: 'border-box' as const },
-  actionBtn:   { background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontWeight: 700, fontSize: 14, cursor: 'pointer', width: '100%' },
-  cancelBtn:   { background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: 8, padding: '10px 20px', fontWeight: 700, fontSize: 14, cursor: 'pointer' },
+// ── Styles ─────────────────────────────────────────────────────
+const P: Record<string, React.CSSProperties> = {
+  page:      { padding: 20, maxWidth: '100%' },
+  header:    { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap', gap: 10 },
+  title:     { fontSize: 22, fontWeight: 800, color: '#111', margin: 0 },
+  subtitle:  { fontSize: 13, color: '#6b7280', marginTop: 3 },
+  midBtn:    { background: '#d97706', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer' },
+  endBtn:    { background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer' },
+  disburseBtn: { background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer' },
+
+  filterBar: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14, alignItems: 'center' },
+  sel:       { border: '1.5px solid #e5e7eb', borderRadius: 7, padding: '7px 10px', fontSize: 13, background: '#fff' },
+  search:    { border: '1.5px solid #e5e7eb', borderRadius: 7, padding: '7px 12px', fontSize: 13, flex: 1, minWidth: 180 },
+
+  strip:     { display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 },
+  stripItem: { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 16px', flex: 1, minWidth: 120 },
+  stripVal:  { fontSize: 15, fontWeight: 800, color: '#111' },
+  stripLabel:{ fontSize: 11, color: '#6b7280', marginTop: 2 },
+
+  tableWrap: { overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 280px)', border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff' },
+  table:     { borderCollapse: 'collapse', fontSize: 12, tableLayout: 'fixed', minWidth: 1800 },
+
+  // Sticky cols
+  stickyTh:  { position: 'sticky', left: 0, zIndex: 3, borderRight: '1px solid #374151', whiteSpace: 'nowrap' },
+  stickyTh2: { position: 'sticky', left: 36, zIndex: 3, borderRight: '2px solid #374151', whiteSpace: 'nowrap' },
+  stickyTd:  { position: 'sticky', left: 0, zIndex: 1, borderRight: '1px solid #e5e7eb' },
+  stickyTd2: { position: 'sticky', left: 36, zIndex: 1, borderRight: '2px solid #e5e7eb' },
+
+  noTh:      { width: 36, textAlign: 'center', fontSize: 11, padding: '6px 4px' },
+  noTd:      { width: 36, textAlign: 'center', fontSize: 11, color: '#9ca3af', padding: '6px 4px' },
+
+  sectionTh: { textAlign: 'center', fontSize: 11, fontWeight: 800, padding: '5px 4px', letterSpacing: '0.05em', color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.2)' },
+
+  dayTh:     { width: 34, minWidth: 34, textAlign: 'center', fontSize: 11, padding: '5px 2px', fontWeight: 600, color: '#374151', borderBottom: '1px solid #e5e7eb' },
+  advTh:     { width: 60, minWidth: 60, textAlign: 'center', fontSize: 10, padding: '5px 3px', fontWeight: 600, color: '#374151', borderBottom: '1px solid #e5e7eb' },
+  payTh:     { width: 68, minWidth: 68, textAlign: 'center', fontSize: 10, padding: '5px 3px', fontWeight: 600, color: '#374151', borderBottom: '1px solid #e5e7eb' },
+
+  numTd:     { width: 34, textAlign: 'center', padding: '6px 2px', borderBottom: '1px solid #f3f4f6', whiteSpace: 'nowrap' },
+  advTd:     { width: 60, textAlign: 'right', padding: '6px 5px', borderBottom: '1px solid #f3f4f6', color: '#374151', fontSize: 11 },
+  payTd:     { width: 68, textAlign: 'right', padding: '6px 5px', borderBottom: '1px solid #f3f4f6', fontSize: 11 },
+
+  advBtn:    { background: '#fff7ed', border: '1px solid #fdba74', borderRadius: 5, padding: '3px 8px', fontSize: 11, fontWeight: 700, color: '#c2410c', cursor: 'pointer' },
+  center:    { display: 'flex', justifyContent: 'center', padding: 60 },
+  spinner:   { width: 36, height: 36, border: '3px solid #e5e7eb', borderTopColor: '#16a34a', borderRadius: '50%', animation: 'spin 0.8s linear infinite' },
+  empty:     { textAlign: 'center', padding: 60, color: '#9ca3af' },
 };

@@ -23,6 +23,7 @@ import shopRoutes from './routes/shop.routes';
 import deliveryRoutes from './routes/delivery.routes';
 import shopSaleRoutes from './routes/shopSale.routes';
 import paymentRoutes from './routes/payment.routes';
+import disbursementRoutes from './routes/disbursement.routes';
 import payrollRoutes from './routes/payroll.routes';
 import reportRoutes from './routes/report.routes';
 import webhookRoutes from './routes/webhook.routes';
@@ -30,7 +31,7 @@ import webhookRoutes from './routes/webhook.routes';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// â”€â”€â”€ Security & middleware â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Security & middleware ────────────────────────────────────────────────────
 app.use(helmet());
 app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true }));
 app.use(morgan('combined', { stream: { write: (msg) => logger.info(msg.trim()) } }));
@@ -46,10 +47,10 @@ app.use(
   rateLimit({ windowMs: 15 * 60 * 1000, max: 500, standardHeaders: true, legacyHeaders: false })
 );
 
-// â”€â”€â”€ Health check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date() }));
 
-// â”€â”€â”€ API routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── API routes ───────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/farmers', farmerRoutes);
 app.use('/api/routes', routeRoutes);
@@ -60,16 +61,16 @@ app.use('/api/shops', shopRoutes);
 app.use('/api/deliveries', deliveryRoutes);
 app.use('/api/shop-sales', shopSaleRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/disbursements', disbursementRoutes);
 app.use('/api/payroll', payrollRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/webhooks', webhookRoutes);
 
-// â”€â”€â”€ Error handler (must be last) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Error handler (must be last) ─────────────────────────────────────────────
 app.use(errorHandler);
 
 app.listen(PORT, () => {
-  logger.info(`ðŸ„ Gutoria API running on http://localhost:${PORT}`);
+  logger.info(`🐄 Gutoria API running on http://localhost:${PORT}`);
 });
 
 export default app;
-

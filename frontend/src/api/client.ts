@@ -69,11 +69,14 @@ export const shopsApi = {
 };
 
 export const paymentsApi = {
-  list:         (params: any) => api.get('/api/payments', { params }),
-  routes:       () => api.get('/api/payments/routes'),
-  recordAdvance:(data: any) => api.post('/api/payments/advance', data),
-  deleteAdvance:(id: number) => api.delete(`/api/payments/advance/${id}`),
-  approve:      (data: any) => api.post('/api/payments/approve', data),
+  list:                (params: any) => api.get('/api/payments', { params }),
+  routes:              () => api.get('/api/payments/routes'),
+  recordAdvance:       (data: any) => api.post('/api/payments/advance', data),
+  deleteAdvance:       (id: number) => api.delete(`/api/payments/advance/${id}`),
+  approve:             (data: any) => api.post('/api/payments/approve', data),
+  previewDisbursement: (params: any) => api.get('/api/disbursements/preview', { params }),
+  disburseMpesa:       (data: any) => api.post('/api/disbursements/mpesa', data),
+  syncStatus:          (params: any) => api.get('/api/disbursements/status', { params }),
 };
 
 export const payrollApi = {

@@ -23,6 +23,7 @@ model Route {
   supervisor   Employee?       @relation("RouteSupervisor", fields: [supervisorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   farmers      Farmer[]
   collections  MilkCollection[]
+  liquidRecords LiquidRecord[]
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -61,20 +62,24 @@ model Employee {
   name          String
   phone         String
   role          String   // GRADER | DRIVER | SHOPKEEPER | FACTORY | OFFICE | ADMIN
-  salary        Decimal  @db.Decimal(10, 2)
-  paymentMethod String   @default("MPESA")  // MPESA | BANK
+  salary        Decimal? @db.Decimal(10, 2)   // optional — set at payroll time
+  paymentMethod String   @default("MPESA")    // MPESA | K-UNITY | EQUITY | KCB etc.
   mpesaPhone    String?
   bankName      String?
   bankAccount   String?
+  passwordHash  String?                        // for mobile app login
   isActive      Boolean  @default(true)
 
-  supervisedRoutes  Route[]        @relation("RouteSupervisor")
-  managedShops      Shop[]         @relation("ShopKeeper")
+  supervisedRoutes  Route[]          @relation("RouteSupervisor")
+  managedShops      Shop[]           @relation("ShopKeeper")
   collections       MilkCollection[]
   factoryReceipts   FactoryReceipt[]
   deliveries        DeliveryToShop[]
   varianceRecords   VarianceRecord[]
+  driverTrips       DriverTrip[]     @relation("DriverTrips")
+  driverExpenses    DriverExpense[]  @relation("DriverExpenses")
   payrolls          Payroll[]
+  liquidRecords     LiquidRecord[]   @relation("GraderLiquid")
 
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -107,6 +112,24 @@ model MilkCollection {
 }
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
+
+// Liquid reconciliation: what grader collected from route vs what arrived at factory
+model LiquidRecord {
+  id          Int      @id @default(autoincrement())
+  graderId    Int?
+  routeId     Int
+  recordDate  DateTime // the day this covers
+  journalL    Decimal  @db.Decimal(10, 2) // litres per journal (from collections)
+  liquidL     Decimal  @db.Decimal(10, 2) // litres actually received at factory
+  diffL       Decimal  @db.Decimal(10, 2) // liquidL - journalL (negative = loss)
+  notes       String?
+
+  grader      Employee? @relation("GraderLiquid", fields: [graderId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  route       Route     @relation(fields: [routeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt   DateTime  @default(now())
+
+  @@unique([routeId, recordDate])
+}
 
 model FactoryReceipt {
   id          Int      @id @default(autoincrement())
@@ -150,6 +173,7 @@ model Shop {
   keeper          Employee?  @relation("ShopKeeper", fields: [keeperId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   deliveries      DeliveryToShop[]
   sales           ShopSale[]
+  drops           ShopDrop[]
   kopokopoTxns    KopokopoTransaction[]
 
   createdAt       DateTime @default(now())
@@ -286,4 +310,56 @@ model KopokopoTransaction {
 
   shop            Shop     @relation(fields: [shopId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   createdAt       DateTime @default(now())
+}
+
+// ─── Driver Trip & Expenses ───────────────────────────────────────────────────
+
+model DriverTrip {
+  id           Int      @id @default(autoincrement())
+  driverId     Int
+  tripDate     DateTime // date of the trip (midnight UTC)
+  litresLoaded Decimal  @db.Decimal(10, 2) // loaded from factory
+  litresDelivered Decimal @db.Decimal(10, 2) @default(0) // sum of all drops
+  litresVariance  Decimal @db.Decimal(10, 2) @default(0) // loaded - delivered
+  notes        String?
+  status       String   @default("OPEN") // OPEN | SUBMITTED | RECONCILED
+
+  driver       Employee         @relation("DriverTrips", fields: [driverId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  drops        ShopDrop[]
+  expenses     DriverExpense[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([driverId, tripDate])
+}
+
+model ShopDrop {
+  id        Int     @id @default(autoincrement())
+  tripId    Int
+  shopId    Int
+  litres    Decimal @db.Decimal(10, 2)
+  cashCollected Decimal @db.Decimal(10, 2) @default(0)
+  notes     String?
+  droppedAt DateTime @default(now())
+
+  trip      DriverTrip @relation(fields: [tripId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shop      Shop       @relation(fields: [shopId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  createdAt DateTime @default(now())
+}
+
+model DriverExpense {
+  id          Int      @id @default(autoincrement())
+  tripId      Int
+  driverId    Int
+  category    String   // FUEL | LUNCH | MAINTENANCE | OTHER
+  amount      Decimal  @db.Decimal(10, 2)
+  description String?
+  receiptNo   String?
+
+  trip        DriverTrip @relation(fields: [tripId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  driver      Employee   @relation("DriverExpenses", fields: [driverId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  createdAt   DateTime @default(now())
 }

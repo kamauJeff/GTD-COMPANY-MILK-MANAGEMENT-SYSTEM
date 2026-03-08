@@ -111,7 +111,7 @@ async function main() {
       await prisma.employee.update({ where: { code }, data: payload });
       updated++;
     } else {
-      await prisma.employee.create({ data: { ...payload, passwordHash: '' } as any });
+      await prisma.employee.create({ data: payload });
       created++;
     }
     console.log(`  ${existing ? '↺' : '✓'} [${code}] ${data.name} — KES ${data.salary.toLocaleString()}`);

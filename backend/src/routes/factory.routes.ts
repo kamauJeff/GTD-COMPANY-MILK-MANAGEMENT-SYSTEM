@@ -1,37 +1,40 @@
 // src/routes/factory.routes.ts
 import { Router } from 'express';
-import { authenticate, authorize } from '../middleware/auth';
-import prisma from '../config/prisma';
+import { authenticate } from '../middleware/auth';
+import {
+  listReceipts, createReceipt, deleteReceipt,
+  listBatches, createBatch, updateBatch, deleteBatch,
+  listDeliveries, createDelivery, deleteDelivery,
+  factoryStats, nextBatchNo, listGraders, listDrivers,
+  getLiquidGrid, saveLiquidRecord, deleteLiquidRecord, chargeLiquidLoss, liquidExcel,
+} from '../controllers/factory.controller';
 
 const router = Router();
 router.use(authenticate);
 
-// Factory Receipts
-router.get('/receipts', async (req, res) => {
-  const { date } = req.query;
-  const where: any = {};
-  if (date) { const d = new Date(String(date)); const n = new Date(d); n.setDate(n.getDate()+1); where.receivedAt = { gte: d, lt: n }; }
-  const receipts = await prisma.factoryReceipt.findMany({ where, include: { grader: { select: { id: true, name: true } } }, orderBy: { receivedAt: 'desc' } });
-  res.json(receipts);
-});
-router.post('/receipts', authorize('FACTORY', 'ADMIN'), async (req, res) => {
-  const receipt = await prisma.factoryReceipt.create({ data: { ...req.body, receivedAt: new Date(req.body.receivedAt) } });
-  res.status(201).json(receipt);
-});
+router.get('/stats',           factoryStats);
+router.get('/next-batch-no',   nextBatchNo);
+router.get('/graders',         listGraders);
+router.get('/drivers',         listDrivers);
 
-// Pasteurization Batches
-router.get('/batches', async (_req, res) => {
-  const batches = await prisma.pasteurizationBatch.findMany({ include: { deliveries: true }, orderBy: { processedAt: 'desc' } });
-  res.json(batches);
-});
-router.post('/batches', authorize('FACTORY', 'ADMIN'), async (req, res) => {
-  const { inputLitres, outputLitres } = req.body;
-  const lossLitres = Number(inputLitres) - Number(outputLitres);
-  const batch = await prisma.pasteurizationBatch.create({
-    data: { ...req.body, lossLitres, processedAt: new Date(req.body.processedAt) },
-  });
-  res.status(201).json(batch);
-});
+router.get('/receipts',        listReceipts);
+router.post('/receipts',       createReceipt);
+router.delete('/receipts/:id', deleteReceipt);
+
+router.get('/batches',         listBatches);
+router.post('/batches',        createBatch);
+router.put('/batches/:id',     updateBatch);
+router.delete('/batches/:id',  deleteBatch);
+
+router.get('/deliveries',      listDeliveries);
+router.post('/deliveries',     createDelivery);
+router.delete('/deliveries/:id', deleteDelivery);
+
+// Liquid reconciliation — order matters: excel before :id
+router.get('/liquid',           getLiquidGrid);
+router.get('/liquid/excel',     liquidExcel);
+router.post('/liquid',          saveLiquidRecord);
+router.delete('/liquid/:id',    deleteLiquidRecord);
+router.post('/liquid/charge',   chargeLiquidLoss);
 
 export default router;
-

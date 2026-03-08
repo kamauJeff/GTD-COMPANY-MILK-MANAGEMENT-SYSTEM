@@ -60,7 +60,14 @@ export async function runPayroll(req: Request, res: Response) {
   const employees = await prisma.employee.findMany({ where });
 
   const results: any[] = [];
+  const noSalary: any[] = [];
+
   for (const emp of employees) {
+    if (!emp.salary) {
+      noSalary.push({ id: emp.id, code: emp.code, name: emp.name });
+      continue; // skip — salary not set yet
+    }
+
     // Sum any variance deductions logged for this period
     const variances = await prisma.varianceRecord.findMany({
       where: { employeeId: emp.id, periodMonth: m, periodYear: y },
@@ -82,7 +89,7 @@ export async function runPayroll(req: Request, res: Response) {
     results.push({ id: payroll.id, name: emp.name, baseSalary, varianceDed, netPay });
   }
 
-  res.json({ processed: results.length, period: `${MONTHS_EN[m]} ${y}`, results });
+  res.json({ processed: results.length, skipped: noSalary.length, noSalary, period: `${MONTHS_EN[m]} ${y}`, results });
 }
 
 // ── POST /api/payroll/approve ─────────────────────────────────
@@ -296,8 +303,9 @@ export async function getRemittance(req: Request, res: Response) {
 
 // ── GET /api/payroll/employees ────────────────────────────────
 export async function getEmployees(req: Request, res: Response) {
-  const { role, search } = req.query;
-  const where: any = { isActive: true };
+  const { role, search, includeInactive } = req.query;
+  const where: any = {};
+  if (includeInactive !== 'true') where.isActive = true;
   if (role)   where.role = String(role).toUpperCase();
   if (search) where.name = { contains: String(search) };
 
@@ -310,29 +318,38 @@ export async function getEmployees(req: Request, res: Response) {
 
 // ── POST /api/payroll/employees ───────────────────────────────
 export async function createEmployee(req: Request, res: Response) {
-  const { name, role, salary, bankAccount, bankName, phone, paymentMethod } = req.body;
-  if (!name || !role || !salary) throw new AppError(400, 'name, role, salary required');
+  const { name, role, salary, bankAccount, bankName, phone, paymentMethod, password } = req.body;
+  if (!name || !role) throw new AppError(400, 'name and role are required');
 
   // Auto-generate code
-  const prefix  = role === 'GRADER' ? 'GR' : role === 'SHOPKEEPER' ? 'SK' : 'EMP';
-  const count   = await prisma.employee.count({ where: { role: String(role).toUpperCase() } });
-  const code    = `${prefix}${String(count + 1).padStart(3, '0')}`;
+  const prefix = role === 'GRADER' ? 'GR' : role === 'SHOPKEEPER' ? 'SK'
+               : role === 'DRIVER' ? 'DRV' : role === 'FACTORY' ? 'FCT'
+               : role === 'OFFICE' ? 'OFF' : 'EMP';
+  const count  = await prisma.employee.count({ where: { role: String(role).toUpperCase() } });
+  const code   = `${prefix}${String(count + 1).padStart(3, '0')}`;
 
-  const employee = await prisma.employee.create({
-    data: {
-      code,
-      name:          String(name).toUpperCase().trim(),
-      phone:         phone ?? '0000000000',
-      role:          String(role).toUpperCase(),
-      salary:        Number(salary),
-      paymentMethod: paymentMethod ?? 'K-UNITY',
-      bankName:      bankName ?? 'K-Unity SACCO',
-      bankAccount:   bankAccount ?? '',
-      isActive:      true,
-      passwordHash:  '',
-    } as any,
-  });
-  res.status(201).json(employee);
+  // Hash password if provided
+  let passwordHash: string | undefined;
+  if (password) {
+    const bcrypt = await import('bcryptjs');
+    passwordHash = await bcrypt.hash(password, 12);
+  }
+
+  const data: any = {
+    code,
+    name:          String(name).toUpperCase().trim(),
+    phone:         phone?.trim() || '0000000000',
+    role:          String(role).toUpperCase(),
+    paymentMethod: paymentMethod ?? 'K-UNITY',
+    bankName:      bankName || null,
+    bankAccount:   bankAccount?.trim() || null,
+    isActive:      true,
+  };
+  if (salary)       data.salary       = Number(salary);
+  if (passwordHash) data.passwordHash = passwordHash;
+
+  const employee = await prisma.employee.create({ data });
+  res.status(201).json({ ...employee, code, message: `Staff registered. Login code: ${code}` });
 }
 
 // ── PUT /api/payroll/employees/:id ────────────────────────────
@@ -351,4 +368,30 @@ export async function deactivateEmployee(req: Request, res: Response) {
     data:  { isActive: false },
   });
   res.json({ message: 'Employee deactivated' });
+}
+
+// ── POST /api/payroll/set-salary ──────────────────────────────
+// Set / update an employee's salary (done at payroll time)
+export async function setSalary(req: Request, res: Response) {
+  const { employeeId, salary } = req.body;
+  if (!employeeId || salary === undefined) throw new AppError(400, 'employeeId and salary required');
+
+  const employee = await prisma.employee.update({
+    where: { id: Number(employeeId) },
+    data:  { salary: Number(salary) },
+    select: { id: true, code: true, name: true, salary: true },
+  });
+  res.json({ message: 'Salary updated', employee });
+}
+
+// ── DELETE /api/payroll/:id ───────────────────────────────────
+// Remove a single payroll entry (revert to PENDING / delete)
+export async function removeFromPayroll(req: Request, res: Response) {
+  const id = Number(req.params.id);
+  const payroll = await prisma.payroll.findUnique({ where: { id } });
+  if (!payroll) throw new AppError(404, 'Payroll entry not found');
+  if (payroll.status === 'PAID') throw new AppError(400, 'Cannot remove a PAID payroll entry');
+
+  await prisma.payroll.delete({ where: { id } });
+  res.json({ message: 'Removed from payroll' });
 }

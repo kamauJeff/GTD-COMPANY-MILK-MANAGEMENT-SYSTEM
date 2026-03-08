@@ -27,6 +27,7 @@ import disbursementRoutes from './routes/disbursement.routes';
 import payrollRoutes from './routes/payroll.routes';
 import reportRoutes from './routes/report.routes';
 import webhookRoutes from './routes/webhook.routes';
+import driverRoutes from './routes/driver.routes';  // ← moved here with the others
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -36,12 +37,10 @@ app.use(helmet());
 app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true }));
 app.use(morgan('combined', { stream: { write: (msg) => logger.info(msg.trim()) } }));
 
-// Raw body for webhook signature verification (must come before json parser)
 app.use('/api/webhooks', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Rate limit public endpoints
 app.use(
   '/api/',
   rateLimit({ windowMs: 15 * 60 * 1000, max: 500, standardHeaders: true, legacyHeaders: false })
@@ -65,6 +64,7 @@ app.use('/api/disbursements', disbursementRoutes);
 app.use('/api/payroll', payrollRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/webhooks', webhookRoutes);
+app.use('/api/driver', driverRoutes);  // ← moved here with the others
 
 // ─── Error handler (must be last) ─────────────────────────────────────────────
 app.use(errorHandler);

@@ -79,6 +79,54 @@ function DeductionModal({ employee, month, year, onClose, onSaved }: {
   );
 }
 
+
+// ── Set Salary Modal ───────────────────────────────────────────
+function SalaryModal({ employee, onClose, onSaved }: {
+  employee: Employee; onClose: () => void; onSaved: () => void;
+}) {
+  const [salary, setSalaryVal] = useState(String(employee.salary ?? ''));
+  const [saving, setSaving]    = useState(false);
+  const [err, setErr]          = useState('');
+
+  async function save() {
+    if (!salary || Number(salary) <= 0) { setErr('Enter a valid salary amount'); return; }
+    setSaving(true); setErr('');
+    try {
+      await payrollApi.setSalary({ employeeId: employee.id, salary: Number(salary) });
+      onSaved();
+    } catch (e: any) { setErr(e.response?.data?.error ?? 'Failed'); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div style={DM.overlay} onClick={onClose}>
+      <div style={{ ...DM.modal, maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+        <div style={DM.header}>
+          <div>
+            <div style={{ fontWeight: 800 }}>💰 Set Salary</div>
+            <div style={{ fontSize: 12, color: '#6b7280' }}>{employee.name}</div>
+          </div>
+          <button style={DM.closeBtn} onClick={onClose}>✕</button>
+        </div>
+        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {err && <div style={{ color: '#dc2626', fontSize: 13 }}>{err}</div>}
+          <div>
+            <label style={DM.label}>Monthly Salary (KES)</label>
+            <input style={DM.input} type="number" value={salary}
+              onChange={e => setSalaryVal(e.target.value)} placeholder="15000" autoFocus />
+          </div>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <button style={DM.cancelBtn} onClick={onClose}>Cancel</button>
+            <button style={{ ...DM.saveBtn, opacity: saving ? 0.5 : 1 }} onClick={save} disabled={saving}>
+              {saving ? 'Saving...' : '✓ Set Salary'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Employee Modal (add/edit) ──────────────────────────────────
 function EmployeeModal({ employee, onClose, onSaved }: {
   employee: Employee | null; onClose: () => void; onSaved: () => void;
@@ -208,6 +256,9 @@ export default function PayrollPage() {
   const [approving, setApproving] = useState(false);
 
   const [deductEntry, setDeductEntry]   = useState<Employee | null>(null);
+  const [salaryEntry, setSalaryEntry]   = useState<Employee | null>(null);
+  const [removing, setRemoving]         = useState<number | null>(null);
+  const [payrollMap, setPayrollMap]     = useState<Record<number, number>>({}); // employeeId → payrollId
   const [empModal, setEmpModal]         = useState<Employee | null | 'new'>(null);
   const [employees, setEmployees]       = useState<Employee[]>([]);
   const [empLoading, setEmpLoading]     = useState(false);
@@ -219,8 +270,13 @@ export default function PayrollPage() {
     setLoading(true);
     try {
       const r = await payrollApi.getPayroll({ month, year, role: roleFilter });
-      setPayrolls(r.data?.payrolls ?? []);
+      const entries = r.data?.payrolls ?? [];
+      setPayrolls(entries);
       setTotals(r.data?.totals ?? null);
+      // Build employeeId → payrollId map for use in All Staff tab
+      const map: Record<number, number> = {};
+      entries.forEach((p: any) => { map[p.employeeId] = p.id; });
+      setPayrollMap(map);
     } catch {}
     finally { setLoading(false); }
   }, [month, year, roleFilter]);
@@ -234,10 +290,33 @@ export default function PayrollPage() {
     finally { setEmpLoading(false); }
   }, [roleFilter, search]);
 
+  async function handleRemoveFromPayroll(payrollId: number) {
+    if (!window.confirm('Remove this entry from payroll? The employee stays in the system.')) return;
+    setRemoving(payrollId);
+    try {
+      await payrollApi.removeFromPayroll(payrollId);
+      // Refresh whichever is active
+      if (tab !== 'staff') await loadPayroll();
+      else { await loadAllPayroll(); await loadEmployees(); }
+    } catch (e: any) { alert(e.response?.data?.error ?? 'Failed'); }
+    finally { setRemoving(null); }
+  }
+
+  // Always keep payrollMap fresh so staff tab can show remove button
+  const loadAllPayroll = useCallback(async () => {
+    try {
+      const r = await payrollApi.getPayroll({ month, year });
+      const entries = r.data?.payrolls ?? [];
+      const map: Record<number, number> = {};
+      entries.forEach((p: any) => { map[p.employeeId] = p.id; });
+      setPayrollMap(map);
+    } catch {}
+  }, [month, year]);
+
   useEffect(() => {
     if (tab !== 'staff') loadPayroll();
-    else loadEmployees();
-  }, [tab, loadPayroll, loadEmployees]);
+    else { loadEmployees(); loadAllPayroll(); }
+  }, [tab, loadPayroll, loadEmployees, loadAllPayroll]);
 
   async function handleRunPayroll() {
     setRunning(true);
@@ -323,6 +402,7 @@ export default function PayrollPage() {
         ))}
       </div>
 
+      {/* No-salary warning -- handled via run payroll response */}
       {/* Summary strip */}
       {totals && tab !== 'staff' && (
         <div style={P.strip}>
@@ -395,10 +475,22 @@ export default function PayrollPage() {
                     </td>
                     <td style={P.td}><StatusBadge status={p.status} /></td>
                     <td style={{ ...P.td, whiteSpace: 'nowrap' }}>
-                      <button style={P.dedBtn}
+                      {!p.employee.salary && (
+                        <button style={{ ...P.dedBtn, background: '#fffbeb', borderColor: '#fcd34d', color: '#92400e', marginRight: 4 }}
+                          onClick={() => setSalaryEntry(p.employee)}>
+                          💰 Set Salary
+                        </button>
+                      )}
+                      <button style={{ ...P.dedBtn, marginRight: 4 }}
                         onClick={() => setDeductEntry(p.employee)}
                         disabled={p.status === 'PAID'}>
                         − Ded
+                      </button>
+                      <button style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 5, padding: '3px 8px', fontSize: 11, fontWeight: 700, color: '#dc2626', cursor: 'pointer', opacity: removing === p.id ? 0.5 : 1 }}
+                        onClick={() => handleRemoveFromPayroll(p.id)}
+                        disabled={p.status === 'PAID' || removing === p.id}
+                        title="Remove from this month's payroll">
+                        🗑
                       </button>
                     </td>
                   </tr>
@@ -455,8 +547,19 @@ export default function PayrollPage() {
                     <td style={{ ...P.td, textAlign: 'right', fontWeight: 700, color: '#16a34a' }}>
                       KES {fmt(Number(e.salary))}
                     </td>
-                    <td style={{ ...P.td, whiteSpace: 'nowrap' }}>
-                      <button style={P.editBtn} onClick={() => setEmpModal(e)}>Edit</button>
+                    <td style={{ ...P.td, whiteSpace: 'nowrap' as const }}>
+                      <button style={{ ...P.editBtn, marginRight: 6 }} onClick={() => setEmpModal(e)}>Edit</button>
+                      {payrollMap[e.id] ? (
+                        <button
+                          style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 5, padding: '3px 10px', fontSize: 11, fontWeight: 700, color: '#dc2626', cursor: 'pointer', opacity: removing === payrollMap[e.id] ? 0.5 : 1 }}
+                          onClick={() => handleRemoveFromPayroll(payrollMap[e.id])}
+                          disabled={removing === payrollMap[e.id]}
+                          title={`Remove from ${MONTHS[month]} ${year} payroll`}>
+                          🗑 Remove
+                        </button>
+                      ) : (
+                        <span style={{ fontSize: 11, color: '#d1d5db', fontStyle: 'italic' }}>not in payroll</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -472,6 +575,13 @@ export default function PayrollPage() {
       )}
 
       {/* Modals */}
+      {salaryEntry && (
+        <SalaryModal
+          employee={salaryEntry}
+          onClose={() => setSalaryEntry(null)}
+          onSaved={() => { setSalaryEntry(null); loadPayroll(); }}
+        />
+      )}
       {deductEntry && (
         <DeductionModal
           employee={deductEntry} month={month} year={year}

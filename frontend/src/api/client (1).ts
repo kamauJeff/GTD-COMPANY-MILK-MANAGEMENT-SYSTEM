@@ -59,25 +59,10 @@ export const collectionsApi = {
 };
 
 export const factoryApi = {
-  stats:          (params: any)  => api.get('/api/factory/stats', { params }),
-  nextBatchNo:    ()             => api.get('/api/factory/next-batch-no'),
-  graders:        ()             => api.get('/api/factory/graders'),
-  drivers:        ()             => api.get('/api/factory/drivers'),
-  receipts:       (params?: any) => api.get('/api/factory/receipts', { params }),
-  createReceipt:  (data: any)    => api.post('/api/factory/receipts', data),
-  deleteReceipt:  (id: number)   => api.delete(`/api/factory/receipts/${id}`),
-  batches:        (params?: any) => api.get('/api/factory/batches', { params }),
-  createBatch:    (data: any)    => api.post('/api/factory/batches', data),
-  updateBatch:    (id: number, data: any) => api.put(`/api/factory/batches/${id}`, data),
-  deleteBatch:    (id: number)   => api.delete(`/api/factory/batches/${id}`),
-  deliveries:     (params?: any) => api.get('/api/factory/deliveries', { params }),
-  createDelivery: (data: any)    => api.post('/api/factory/deliveries', data),
-  deleteDelivery:  (id: number)   => api.delete(`/api/factory/deliveries/${id}`),
-  liquidGrid:      (params: any)  => api.get('/api/factory/liquid', { params }),
-  saveLiquid:      (data: any)    => api.post('/api/factory/liquid', data),
-  deleteLiquid:    (id: number)   => api.delete(`/api/factory/liquid/${id}`),
-  chargeLoss:      (data: any)    => api.post('/api/factory/liquid/charge', data),
-  liquidExcel:     (params: any)  => api.get('/api/factory/liquid/excel', { params, responseType: 'blob' }),
+  receipts: (params?: any) => api.get('/api/factory/receipts', { params }),
+  createReceipt: (data: any) => api.post('/api/factory/receipts', data),
+  batches: () => api.get('/api/factory/batches'),
+  createBatch: (data: any) => api.post('/api/factory/batches', data),
 };
 
 export const shopsApi = {

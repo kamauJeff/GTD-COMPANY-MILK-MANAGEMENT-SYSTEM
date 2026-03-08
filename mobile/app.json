@@ -3,9 +3,8 @@
     "name": "Gutoria Dairies",
     "slug": "gutoria-mobile",
     "version": "1.0.0",
-    "sdkVersion": "54.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "android": { "adaptiveIcon": { "backgroundColor": "#16a34a" }, "package": "com.gutoria.dairies" },
     "ios": { "bundleIdentifier": "com.gutoria.dairies" }
   }

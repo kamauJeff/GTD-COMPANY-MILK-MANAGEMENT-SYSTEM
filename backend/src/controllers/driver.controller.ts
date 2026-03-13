@@ -36,12 +36,11 @@ export async function startTrip(req: Request, res: Response) {
 
   const trip = await prisma.driverTrip.upsert({
     where:  { driverId_tripDate: { driverId, tripDate: date } },
-    update: { litresLoaded: Number(litresLoaded), notes: notes ?? null },
+    update: { litresLoaded: Number(litresLoaded) },
     create: {
       driverId,
       tripDate:     date,
       litresLoaded: Number(litresLoaded),
-      notes:        notes ?? null,
       status:       'OPEN',
     },
     include: { drops: true, expenses: true },

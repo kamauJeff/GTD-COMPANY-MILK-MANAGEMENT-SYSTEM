@@ -263,7 +263,7 @@ export async function getLiquidGrid(req: Request, res: Response) {
   // Saved liquid records for the month
   const liquidRecords = await prisma.liquidRecord.findMany({
     where: { recordDate: range },
-    select: { routeId: true, graderId: true, recordDate: true, liquidL: true, notes: true, id: true },
+    select: { routeId: true, graderId: true, recordDate: true, liquidL: true, id: true },
   });
 
   const grid = routes.map(route => {

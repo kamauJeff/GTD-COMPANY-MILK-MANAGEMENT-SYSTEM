@@ -238,7 +238,7 @@ export async function disbursementCallback(req: Request, res: Response) {
     if (!ref) return;
 
     const newStatus = status === 'success' || status === 'transferred' ? 'PAID'
-                    : status === 'failed'  || status === 'rejected'    ? 'FAILED'
+                    : status === 'failed'  || status === 'rejected'    ? 'PENDING'
                     : null;
 
     if (!newStatus) return;
@@ -487,7 +487,7 @@ export async function syncDisbursementStatus(req: Request, res: Response) {
     try {
       const status = await getTransferStatus(payment.kopokopoRef!);
       const newStatus = status === 'success' || status === 'transferred' ? 'PAID'
-                      : status === 'failed'  || status === 'rejected'    ? 'FAILED'
+                      : status === 'failed'  || status === 'rejected'    ? 'PENDING'
                       : null;
       if (newStatus) {
         await prisma.farmerPayment.update({

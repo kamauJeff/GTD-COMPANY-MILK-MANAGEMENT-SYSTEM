@@ -363,7 +363,7 @@ export async function saveLiquidRecord(req: Request, res: Response) {
   if (existing) {
     record = await prisma.liquidRecord.update({
       where: { id: existing.id },
-      data: { liquidL: Number(liquidL), diffL, notes: notes ?? null },
+      data: { liquidL: Number(liquidL), diffL },
     });
   } else {
     record = await prisma.liquidRecord.create({
@@ -374,7 +374,6 @@ export async function saveLiquidRecord(req: Request, res: Response) {
         journalL,
         liquidL:    Number(liquidL),
         diffL,
-        notes:      notes ?? null,
       },
     });
   }

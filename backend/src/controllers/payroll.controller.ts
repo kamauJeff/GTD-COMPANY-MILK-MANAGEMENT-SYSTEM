@@ -99,7 +99,7 @@ export async function approvePayroll(req: Request, res: Response) {
 
   const where: any = { periodMonth: Number(month), periodYear: Number(year), status: 'PENDING' };
   if (role) {
-    const emps = await prisma.employee.findMany({ where: { role: String(role).toUpperCase() }, select: { id: true } });
+    const emps = await prisma.employee.findMany({ where: { role: String(role).toUpperCase() as any }, select: { id: true } });
     where.employeeId = { in: emps.map(e => e.id) };
   }
 
@@ -325,7 +325,7 @@ export async function createEmployee(req: Request, res: Response) {
   const prefix = role === 'GRADER' ? 'GR' : role === 'SHOPKEEPER' ? 'SK'
                : role === 'DRIVER' ? 'DRV' : role === 'FACTORY' ? 'FCT'
                : role === 'OFFICE' ? 'OFF' : 'EMP';
-  const count  = await prisma.employee.count({ where: { role: String(role).toUpperCase() } });
+  const count  = await prisma.employee.count({ where: { role: String(role).toUpperCase() as any } });
   const code   = `${prefix}${String(count + 1).padStart(3, '0')}`;
 
   // Hash password if provided

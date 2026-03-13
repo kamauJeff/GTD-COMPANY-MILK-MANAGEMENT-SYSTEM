@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { prisma } from '../config/database';
+import { prisma } from '../config/prisma';
 
 // GET /api/farmer-portal/statement?code=FM0668&month=9&year=2024&period=end
 export const getFarmerStatement = async (req: Request, res: Response) => {

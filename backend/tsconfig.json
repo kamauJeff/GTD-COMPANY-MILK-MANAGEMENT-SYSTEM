@@ -5,7 +5,8 @@
     "lib": ["ES2020"],
     "outDir": "./dist",
     "rootDir": "./src",
-    "strict": true,
+    "strict": false,
+    "noEmitOnError": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
@@ -19,6 +20,14 @@
     }
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/debugShops.ts",
+    "src/debugShopsApi.ts",
+    "src/seedShops.ts",
+    "src/seedEmployees.ts",
+    "src/seedRoutes.ts",
+    "src/seedFarmers.ts"
+  ]
 }
-

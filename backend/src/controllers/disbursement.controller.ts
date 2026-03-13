@@ -203,11 +203,11 @@ export async function disburseMpesaPayments(req: Request, res: Response) {
       // Record payment as PROCESSING
       await prisma.farmerPayment.upsert({
         where: { farmerId_periodMonth_periodYear_isMidMonth: { farmerId: farmer.id, periodMonth: m, periodYear: y, isMidMonth: mid } },
-        update: { grossPay: gross, totalAdvances: adv, totalDeductions: 0, netPay, status: 'PROCESSING', kopokopoRef: transferId },
-        create: { farmerId: farmer.id, periodMonth: m, periodYear: y, isMidMonth: mid, grossPay: gross, totalAdvances: adv, totalDeductions: 0, netPay, status: 'PROCESSING', kopokopoRef: transferId },
+        update: { grossPay: gross, totalAdvances: adv, totalDeductions: 0, netPay, status: 'PENDING', kopokopoRef: transferId },
+        create: { farmerId: farmer.id, periodMonth: m, periodYear: y, isMidMonth: mid, grossPay: gross, totalAdvances: adv, totalDeductions: 0, netPay, status: 'PENDING', kopokopoRef: transferId },
       });
 
-      results.push({ id: farmer.id, name: farmer.name, phone, amount: netPay, status: 'PROCESSING', ref: transferId });
+      results.push({ id: farmer.id, name: farmer.name, phone, amount: netPay, status: 'PENDING', ref: transferId });
       logger.info(`Disbursed KES ${netPay} to ${farmer.name} (${phone})`);
 
     } catch (err: any) {
@@ -218,7 +218,7 @@ export async function disburseMpesaPayments(req: Request, res: Response) {
 
   res.json({
     processed: results.length,
-    successful: results.filter(r => r.status === 'PROCESSING').length,
+    successful: results.filter(r => r.status === 'PENDING').length,
     failed:    results.filter(r => r.status === 'ERROR').length,
     results,
   });
@@ -479,7 +479,7 @@ export async function syncDisbursementStatus(req: Request, res: Response) {
   if (!month || !year) throw new AppError(400, 'month and year required');
 
   const processing = await prisma.farmerPayment.findMany({
-    where: { periodMonth: Number(month), periodYear: Number(year), status: 'PROCESSING', kopokopoRef: { not: null } },
+    where: { periodMonth: Number(month), periodYear: Number(year), status: 'PENDING', kopokopoRef: { not: null } },
   });
 
   const updates: any[] = [];

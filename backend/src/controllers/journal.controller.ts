@@ -28,7 +28,7 @@ function styleCell(
 
 const MONEY_FMT  = '#,##0.00';
 const LITRES_FMT = '#,##0.0';
-const COL_LETTERS = (n: number) => ExcelJS.utils ? '' : String.fromCharCode(64 + n);
+const COL_LETTERS = (n: number) => String.fromCharCode(64 + n);
 
 // Convert column index (1-based) to Excel letter
 function col(n: number): string {

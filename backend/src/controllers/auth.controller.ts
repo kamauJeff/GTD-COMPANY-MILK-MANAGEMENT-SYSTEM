@@ -18,7 +18,7 @@ export async function login(req: Request, res: Response) {
   const token = jwt.sign(
     { sub: employee.id, role: employee.role, name: employee.name },
     process.env.JWT_SECRET!,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    { expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as any }
   );
 
   res.json({ token, employee: { id: employee.id, name: employee.name, role: employee.role } });
@@ -45,4 +45,3 @@ export async function changePassword(req: Request, res: Response) {
   await prisma.employee.update({ where: { id: employee.id }, data: { passwordHash: hash } as any });
   res.json({ message: 'Password updated' });
 }
-

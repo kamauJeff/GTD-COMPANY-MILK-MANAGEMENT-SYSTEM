@@ -126,7 +126,7 @@ export async function addDeduction(req: Request, res: Response) {
 
   if (!payroll) {
     payroll = await prisma.payroll.create({
-      data: { employeeId: Number(employeeId), periodMonth: m, periodYear: y, baseSalary: emp.salary, varianceDeductions: 0, otherDeductions: 0, netPay: Number(emp.salary) },
+      data: { employeeId: Number(employeeId), periodMonth: m, periodYear: y, baseSalary: emp.salary ?? 0, varianceDeductions: 0, otherDeductions: 0, netPay: Number(emp.salary ?? 0) },
     });
   }
 

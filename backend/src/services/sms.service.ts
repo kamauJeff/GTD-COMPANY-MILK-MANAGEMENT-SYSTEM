@@ -1,4 +1,6 @@
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 // src/services/sms.service.ts
+// @ts-ignore
 import AfricasTalking from 'africastalking';
 import { Farmer, MilkCollection } from '@prisma/client';
 import { logger } from '../config/logger';
@@ -34,4 +36,3 @@ export async function sendPaymentSMS(phone: string, name: string, amount: number
   const message = `Dear ${name}, your milk payment of KES ${amount.toLocaleString()} for ${period} has been sent. Thank you - Gutoria Dairies.`;
   return sms.send({ to: [phone], message, from: process.env.AT_SENDER_ID });
 }
-

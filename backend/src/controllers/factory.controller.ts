@@ -184,7 +184,7 @@ export async function factoryStats(req: Request, res: Response) {
       select: { litres: true, sellingPrice: true },
     }),
     prisma.employee.count({ where: { role: 'GRADER', isActive: true } }),
-    prisma.shop.count({ where: { isActive: true } }),
+    prisma.shop.count({}),
   ]);
 
   const totalReceived   = receipts.reduce((s, r) => s + Number(r.litres), 0);

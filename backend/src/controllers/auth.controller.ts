@@ -17,7 +17,7 @@ export async function login(req: Request, res: Response) {
 
   const token = jwt.sign(
     { sub: employee.id, role: employee.role, name: employee.name },
-    process.env.JWT_SECRET!,
+    process.env.JWT_SECRET as string,
     { expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as any }
   );
 

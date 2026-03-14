@@ -50,6 +50,7 @@ model Route {
   supervisor  Employee?  @relation("RouteSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   farmers     Farmer[]
   collections MilkCollection[]
+  liquidRecords LiquidRecord[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -94,20 +95,15 @@ model Employee {
   bankName      String?
   bankAccount   String?
   isActive      Boolean      @default(true)
-
-  supervisedRoutes  Route[]  @relation("RouteSupervisor")
+  passwordHash  String?
   managedShop       Shop?    @relation("ShopKeeper")
   collections       MilkCollection[]
   factoryReceipts   FactoryReceipt[]
   deliveries        DeliveryToShop[]
   varianceRecords   VarianceRecord[]
   payrolls          Payroll[]
-
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-}
-
-// ─── Milk Collection ──────────────────────────────────────────────────────────
+  driverTrips       DriverTrip[]
+  liquidRecords     LiquidRecord[]
 
 model MilkCollection {
   id          Int      @id @default(autoincrement())
@@ -177,6 +173,7 @@ model Shop {
   deliveries      DeliveryToShop[]
   sales           ShopSale[]
   kopokopoTxns    KopokopoTransaction[]
+  shopDrops       ShopDrop[]
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -310,4 +307,69 @@ model KopokopoTransaction {
 
   shop            Shop     @relation(fields: [shopId], references: [id])
   createdAt       DateTime @default(now())
+}
+
+// ─── Driver Trip ──────────────────────────────────────────────────────────────
+
+model DriverTrip {
+  id          Int      @id @default(autoincrement())
+  driverId    Int
+  tripDate    DateTime
+  routesCovered String?
+  totalLitres Decimal  @default(0)
+  status      String   @default("PENDING")
+  notes       String?
+
+  driver      Employee  @relation(fields: [driverId], references: [id])
+  shopDrops   ShopDrop[]
+  expenses    DriverExpense[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ShopDrop {
+  id          Int      @id @default(autoincrement())
+  tripId      Int
+  shopId      Int
+  litres      Decimal  @default(0)
+  droppedAt   DateTime
+
+  trip        DriverTrip @relation(fields: [tripId], references: [id])
+  shop        Shop       @relation(fields: [shopId], references: [id])
+
+  createdAt   DateTime @default(now())
+}
+
+model DriverExpense {
+  id          Int      @id @default(autoincrement())
+  tripId      Int
+  description String
+  amount      Decimal  @default(0)
+  expenseDate DateTime
+
+  trip        DriverTrip @relation(fields: [tripId], references: [id])
+
+  createdAt   DateTime @default(now())
+}
+
+// ─── Liquid Ledger ────────────────────────────────────────────────────────────
+
+model LiquidRecord {
+  id          Int      @id @default(autoincrement())
+  routeId     Int
+  graderId    Int?
+  recordDate  DateTime
+  received    Decimal  @default(0)
+  dispatched  Decimal  @default(0)
+  variance    Decimal  @default(0)
+  notes       String?
+
+  route       Route    @relation(fields: [routeId], references: [id])
+  grader      Employee? @relation(fields: [graderId], references: [id])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([routeId, recordDate])
 }

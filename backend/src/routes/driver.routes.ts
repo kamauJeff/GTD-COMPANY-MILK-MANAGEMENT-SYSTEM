@@ -1,24 +1,21 @@
-// src/routes/driver.routes.ts
 import { Router } from 'express';
-import { authenticate, authorize } from '../middleware/auth';
+import { authenticate } from '../middleware/auth';
 import {
-  getMyTrip, startTrip, addDrop, editDrop, deleteDrop,
-  addExpense, deleteExpense, submitTrip, getShops, getTripHistory,
+  getTrips, upsertTrip, createDrop, updateDrop, deleteDrop,
+  createExpense, updateExpense, deleteExpense, getDriverSummary,
 } from '../controllers/driver.controller';
 
 const router = Router();
 router.use(authenticate);
-router.use(authorize('DRIVER', 'ADMIN', 'FACTORY', 'MANAGER'));
 
-router.get('/shops',              getShops);
-router.get('/trip',               getMyTrip);
-router.get('/history',            getTripHistory);
-router.post('/trip/start',        startTrip);
-router.post('/trip/:tripId/drop',              addDrop);
-router.put('/trip/:tripId/drop/:dropId',       editDrop);
-router.delete('/trip/:tripId/drop/:dropId',    deleteDrop);
-router.post('/trip/:tripId/expense',           addExpense);
-router.delete('/trip/:tripId/expense/:expenseId', deleteExpense);
-router.post('/trip/:tripId/submit',            submitTrip);
+router.get('/trips', getTrips);
+router.post('/trips/upsert', upsertTrip);
+router.get('/summary', getDriverSummary);
+router.post('/drops', createDrop);
+router.put('/drops/:id', updateDrop);
+router.delete('/drops/:id', deleteDrop);
+router.post('/expenses', createExpense);
+router.put('/expenses/:id', updateExpense);
+router.delete('/expenses/:id', deleteExpense);
 
 export default router;

@@ -39,89 +39,99 @@ enum VarianceType {
   SHOP_REMITTANCE
 }
 
-// ─── Route & Farmer ───────────────────────────────────────────────────────────
+// ─── Route ────────────────────────────────────────────────────────────────────
 
 model Route {
-  id          Int      @id @default(autoincrement())
-  code        String   @unique
-  name        String
+  id           Int      @id @default(autoincrement())
+  code         String   @unique
+  name         String
   supervisorId Int?
 
-  supervisor  Employee?  @relation("RouteSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  farmers     Farmer[]
-  collections MilkCollection[]
+  supervisor    Employee?        @relation("RouteSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  farmers       Farmer[]
+  collections   MilkCollection[]
   liquidRecords LiquidRecord[]
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
+// ─── Farmer ───────────────────────────────────────────────────────────────────
+
 model Farmer {
-  id            Int      @id @default(autoincrement())
-  code          String   @unique
+  id            Int           @id @default(autoincrement())
+  code          String        @unique
   name          String
   idNumber      String?
   phone         String
   routeId       Int
-  pricePerLitre Decimal  
+  pricePerLitre Decimal
   paymentMethod PaymentMethod @default(MPESA)
   mpesaPhone    String?
   bankName      String?
   bankAccount   String?
-  paidOn15th    Boolean  @default(false)
-  isActive      Boolean  @default(true)
+  paidOn15th    Boolean       @default(false)
+  isActive      Boolean       @default(true)
 
-  route         Route    @relation(fields: [routeId], references: [id])
-  collections   MilkCollection[]
-  advances      FarmerAdvance[]
-  deductions    FarmerDeduction[]
-  payments      FarmerPayment[]
+  route       Route            @relation(fields: [routeId], references: [id])
+  collections MilkCollection[]
+  advances    FarmerAdvance[]
+  deductions  FarmerDeduction[]
+  payments    FarmerPayment[]
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ─── Employee ─────────────────────────────────────────────────────────────────
 
 model Employee {
-  id            Int          @id @default(autoincrement())
-  code          String       @unique
+  id            Int           @id @default(autoincrement())
+  code          String        @unique
   name          String
   phone         String
   role          EmployeeRole
-  salary        Decimal      
+  salary        Decimal
   paymentMethod PaymentMethod @default(MPESA)
   mpesaPhone    String?
   bankName      String?
   bankAccount   String?
-  isActive      Boolean      @default(true)
+  isActive      Boolean       @default(true)
   passwordHash  String?
-  managedShop       Shop?    @relation("ShopKeeper")
-  collections       MilkCollection[]
-  factoryReceipts   FactoryReceipt[]
-  deliveries        DeliveryToShop[]
-  varianceRecords   VarianceRecord[]
-  payrolls          Payroll[]
-  driverTrips       DriverTrip[]
-  liquidRecords     LiquidRecord[]
+
+  supervisedRoutes Route[]    @relation("RouteSupervisor")
+  managedShop      Shop?      @relation("ShopKeeper")
+  collections      MilkCollection[]
+  factoryReceipts  FactoryReceipt[]
+  deliveries       DeliveryToShop[]
+  varianceRecords  VarianceRecord[]
+  payrolls         Payroll[]
+  driverTrips      DriverTrip[]
+  liquidRecords    LiquidRecord[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─── Milk Collection ──────────────────────────────────────────────────────────
 
 model MilkCollection {
   id          Int      @id @default(autoincrement())
   farmerId    Int
   routeId     Int
   graderId    Int
-  litres      Decimal  
+  litres      Decimal
   collectedAt DateTime
   synced      Boolean  @default(false)
   smsSent     Boolean  @default(false)
   receiptNo   String?
 
-  farmer      Farmer   @relation(fields: [farmerId], references: [id])
-  route       Route    @relation(fields: [routeId], references: [id])
-  grader      Employee @relation(fields: [graderId], references: [id])
+  farmer Farmer   @relation(fields: [farmerId], references: [id])
+  route  Route    @relation(fields: [routeId], references: [id])
+  grader Employee @relation(fields: [graderId], references: [id])
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([collectedAt])
   @@index([farmerId, collectedAt])
@@ -132,84 +142,84 @@ model MilkCollection {
 // ─── Factory ──────────────────────────────────────────────────────────────────
 
 model FactoryReceipt {
-  id          Int      @id @default(autoincrement())
-  graderId    Int
-  litres      Decimal  
-  receivedAt  DateTime
-  notes       String?
+  id         Int      @id @default(autoincrement())
+  graderId   Int
+  litres     Decimal
+  receivedAt DateTime
+  notes      String?
 
-  grader      Employee @relation(fields: [graderId], references: [id])
-  batches     PasteurizationBatch[] @relation("BatchReceipts")
+  grader  Employee              @relation(fields: [graderId], references: [id])
+  batches PasteurizationBatch[] @relation("BatchReceipts")
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
 model PasteurizationBatch {
-  id              Int      @id @default(autoincrement())
-  batchNo         String   @unique
-  inputLitres     Decimal  
-  outputLitres    Decimal  
-  lossLitres      Decimal    @default(0)
-  processedAt     DateTime
-  qualityNotes    String?
+  id           Int      @id @default(autoincrement())
+  batchNo      String   @unique
+  inputLitres  Decimal
+  outputLitres Decimal
+  lossLitres   Decimal  @default(0)
+  processedAt  DateTime
+  qualityNotes String?
 
-  receipts        FactoryReceipt[] @relation("BatchReceipts")
-  deliveries      DeliveryToShop[]
+  receipts   FactoryReceipt[] @relation("BatchReceipts")
+  deliveries DeliveryToShop[]
 
-  createdAt       DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
 // ─── Shop & Sales ─────────────────────────────────────────────────────────────
 
 model Shop {
-  id              Int      @id @default(autoincrement())
-  code            String   @unique
-  name            String
-  location        String?
-  keeperId        Int      @unique
-  tillNumber      String?  // Kopokopo till
+  id         Int     @id @default(autoincrement())
+  code       String  @unique
+  name       String
+  location   String?
+  keeperId   Int     @unique
+  tillNumber String?
 
-  keeper          Employee @relation("ShopKeeper", fields: [keeperId], references: [id])
-  deliveries      DeliveryToShop[]
-  sales           ShopSale[]
-  kopokopoTxns    KopokopoTransaction[]
-  shopDrops       ShopDrop[]
+  keeper       Employee              @relation("ShopKeeper", fields: [keeperId], references: [id])
+  deliveries   DeliveryToShop[]
+  sales        ShopSale[]
+  kopokopoTxns KopokopoTransaction[]
+  shopDrops    ShopDrop[]
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model DeliveryToShop {
-  id          Int      @id @default(autoincrement())
-  batchId     Int
-  shopId      Int
-  driverId    Int
-  litres      Decimal  
-  sellingPrice Decimal 
-  deliveredAt DateTime
+  id           Int      @id @default(autoincrement())
+  batchId      Int
+  shopId       Int
+  driverId     Int
+  litres       Decimal
+  sellingPrice Decimal
+  deliveredAt  DateTime
 
-  batch       PasteurizationBatch @relation(fields: [batchId], references: [id])
-  shop        Shop     @relation(fields: [shopId], references: [id])
-  driver      Employee @relation(fields: [driverId], references: [id])
+  batch  PasteurizationBatch @relation(fields: [batchId], references: [id])
+  shop   Shop                @relation(fields: [shopId], references: [id])
+  driver Employee            @relation(fields: [driverId], references: [id])
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
 model ShopSale {
   id              Int      @id @default(autoincrement())
   shopId          Int
   saleDate        DateTime
-  litresSold      Decimal  
-  expectedRevenue Decimal  
-  cashCollected   Decimal  
-  tillAmount      Decimal   @default(0)
-  variance        Decimal   @default(0)
+  litresSold      Decimal
+  expectedRevenue Decimal
+  cashCollected   Decimal
+  tillAmount      Decimal  @default(0)
+  variance        Decimal  @default(0)
   reconciled      Boolean  @default(false)
 
-  shop            Shop     @relation(fields: [shopId], references: [id])
+  shop Shop @relation(fields: [shopId], references: [id])
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ─── Payments ─────────────────────────────────────────────────────────────────
@@ -217,43 +227,43 @@ model ShopSale {
 model FarmerAdvance {
   id          Int      @id @default(autoincrement())
   farmerId    Int
-  amount      Decimal  
+  amount      Decimal
   advanceDate DateTime
   notes       String?
 
-  farmer      Farmer   @relation(fields: [farmerId], references: [id])
-  createdAt   DateTime @default(now())
+  farmer    Farmer   @relation(fields: [farmerId], references: [id])
+  createdAt DateTime @default(now())
 }
 
 model FarmerDeduction {
-  id          Int      @id @default(autoincrement())
-  farmerId    Int
-  amount      Decimal  
-  reason      String
+  id            Int      @id @default(autoincrement())
+  farmerId      Int
+  amount        Decimal
+  reason        String
   deductionDate DateTime
-  periodMonth Int
-  periodYear  Int
+  periodMonth   Int
+  periodYear    Int
 
-  farmer      Farmer   @relation(fields: [farmerId], references: [id])
-  createdAt   DateTime @default(now())
+  farmer    Farmer   @relation(fields: [farmerId], references: [id])
+  createdAt DateTime @default(now())
 }
 
 model FarmerPayment {
-  id              Int      @id @default(autoincrement())
+  id              Int           @id @default(autoincrement())
   farmerId        Int
   periodMonth     Int
   periodYear      Int
-  isMidMonth      Boolean  @default(false)
-  grossPay        Decimal  
-  totalAdvances   Decimal  
-  totalDeductions Decimal  
-  netPay          Decimal  
+  isMidMonth      Boolean       @default(false)
+  grossPay        Decimal
+  totalAdvances   Decimal
+  totalDeductions Decimal
+  netPay          Decimal
   status          PayrollStatus @default(PENDING)
   kopokopoRef     String?
   paidAt          DateTime?
 
-  farmer          Farmer   @relation(fields: [farmerId], references: [id])
-  createdAt       DateTime @default(now())
+  farmer    Farmer   @relation(fields: [farmerId], references: [id])
+  createdAt DateTime @default(now())
 
   @@unique([farmerId, periodMonth, periodYear, isMidMonth])
 }
@@ -261,20 +271,20 @@ model FarmerPayment {
 // ─── Staff Payroll ────────────────────────────────────────────────────────────
 
 model Payroll {
-  id              Int      @id @default(autoincrement())
-  employeeId      Int
-  periodMonth     Int
-  periodYear      Int
-  baseSalary      Decimal  
-  varianceDeductions Decimal  @default(0)
-  otherDeductions Decimal   @default(0)
-  netPay          Decimal  
-  status          PayrollStatus @default(PENDING)
-  kopokopoRef     String?
-  paidAt          DateTime?
+  id                 Int           @id @default(autoincrement())
+  employeeId         Int
+  periodMonth        Int
+  periodYear         Int
+  baseSalary         Decimal
+  varianceDeductions Decimal       @default(0)
+  otherDeductions    Decimal       @default(0)
+  netPay             Decimal
+  status             PayrollStatus @default(PENDING)
+  kopokopoRef        String?
+  paidAt             DateTime?
 
-  employee        Employee @relation(fields: [employeeId], references: [id])
-  createdAt       DateTime @default(now())
+  employee  Employee @relation(fields: [employeeId], references: [id])
+  createdAt DateTime @default(now())
 
   @@unique([employeeId, periodMonth, periodYear])
 }
@@ -283,15 +293,15 @@ model VarianceRecord {
   id          Int          @id @default(autoincrement())
   employeeId  Int
   type        VarianceType
-  amount      Decimal      
+  amount      Decimal
   recordDate  DateTime
   periodMonth Int
   periodYear  Int
   description String?
   applied     Boolean      @default(false)
 
-  employee    Employee     @relation(fields: [employeeId], references: [id])
-  createdAt   DateTime     @default(now())
+  employee  Employee @relation(fields: [employeeId], references: [id])
+  createdAt DateTime @default(now())
 }
 
 // ─── Kopokopo ─────────────────────────────────────────────────────────────────
@@ -300,45 +310,45 @@ model KopokopoTransaction {
   id              Int      @id @default(autoincrement())
   shopId          Int
   tillNumber      String
-  amount          Decimal  
+  amount          Decimal
   transactionRef  String   @unique
   transactionDate DateTime
   matched         Boolean  @default(false)
 
-  shop            Shop     @relation(fields: [shopId], references: [id])
-  createdAt       DateTime @default(now())
+  shop      Shop     @relation(fields: [shopId], references: [id])
+  createdAt DateTime @default(now())
 }
 
 // ─── Driver Trip ──────────────────────────────────────────────────────────────
 
 model DriverTrip {
-  id          Int      @id @default(autoincrement())
-  driverId    Int
-  tripDate    DateTime
+  id            Int      @id @default(autoincrement())
+  driverId      Int
+  tripDate      DateTime
   routesCovered String?
-  totalLitres Decimal  @default(0)
-  status      String   @default("PENDING")
-  notes       String?
+  totalLitres   Decimal  @default(0)
+  status        String   @default("PENDING")
+  notes         String?
 
-  driver      Employee  @relation(fields: [driverId], references: [id])
-  shopDrops   ShopDrop[]
-  expenses    DriverExpense[]
+  driver    Employee        @relation(fields: [driverId], references: [id])
+  shopDrops ShopDrop[]
+  expenses  DriverExpense[]
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model ShopDrop {
-  id          Int      @id @default(autoincrement())
-  tripId      Int
-  shopId      Int
-  litres      Decimal  @default(0)
-  droppedAt   DateTime
+  id        Int      @id @default(autoincrement())
+  tripId    Int
+  shopId    Int
+  litres    Decimal  @default(0)
+  droppedAt DateTime
 
-  trip        DriverTrip @relation(fields: [tripId], references: [id])
-  shop        Shop       @relation(fields: [shopId], references: [id])
+  trip      DriverTrip @relation(fields: [tripId], references: [id])
+  shop      Shop       @relation(fields: [shopId], references: [id])
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
 model DriverExpense {
@@ -348,28 +358,28 @@ model DriverExpense {
   amount      Decimal  @default(0)
   expenseDate DateTime
 
-  trip        DriverTrip @relation(fields: [tripId], references: [id])
+  trip      DriverTrip @relation(fields: [tripId], references: [id])
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
 // ─── Liquid Ledger ────────────────────────────────────────────────────────────
 
 model LiquidRecord {
-  id          Int      @id @default(autoincrement())
-  routeId     Int
-  graderId    Int?
-  recordDate  DateTime
-  received    Decimal  @default(0)
-  dispatched  Decimal  @default(0)
-  variance    Decimal  @default(0)
-  notes       String?
+  id         Int      @id @default(autoincrement())
+  routeId    Int
+  graderId   Int?
+  recordDate DateTime
+  received   Decimal  @default(0)
+  dispatched Decimal  @default(0)
+  variance   Decimal  @default(0)
+  notes      String?
 
-  route       Route    @relation(fields: [routeId], references: [id])
-  grader      Employee? @relation(fields: [graderId], references: [id])
+  route  Route     @relation(fields: [routeId], references: [id])
+  grader Employee? @relation(fields: [graderId], references: [id])
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([routeId, recordDate])
 }

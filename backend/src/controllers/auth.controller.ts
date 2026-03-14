@@ -9,10 +9,14 @@ export async function login(req: Request, res: Response) {
   const { code, password } = req.body;
   if (!code || !password) throw new AppError(400, 'code and password are required');
 
-  const employee = await prisma.employee.findUnique({ where: { code } });
-  if (!employee || !(employee as any).passwordHash) throw new AppError(401, 'Invalid credentials');
+  const employee = await prisma.employee.findUnique({ where: { code: code.toUpperCase() } });
+  if (!employee) throw new AppError(401, 'Invalid credentials');
 
-  const valid = await bcrypt.compare(password, (employee as any).passwordHash);
+  // Check passwordHash
+  const hash = (employee as any).passwordHash;
+  if (!hash) throw new AppError(401, 'Account not configured. Contact admin.');
+
+  const valid = await bcrypt.compare(password, hash);
   if (!valid) throw new AppError(401, 'Invalid credentials');
 
   const token = jwt.sign(
@@ -21,7 +25,7 @@ export async function login(req: Request, res: Response) {
     { expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as any }
   );
 
-  res.json({ token, employee: { id: employee.id, name: employee.name, role: employee.role } });
+  res.json({ token, employee: { id: employee.id, name: employee.name, role: employee.role, code: employee.code } });
 }
 
 export async function me(req: Request, res: Response) {

@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
 import {
   LayoutDashboard, Users, Route, Milk, Factory, Store,
-  CreditCard, Briefcase, BarChart2, LogOut, Sparkles
+  CreditCard, Briefcase, BarChart2, LogOut, Sparkles, Droplets
 } from 'lucide-react';
 import { AIWidget } from '../AIWidget';
 
@@ -13,6 +13,7 @@ const NAV = [
   { to: '/routes', icon: Route, label: 'Routes' },
   { to: '/collections', icon: Milk, label: 'Collections' },
   { to: '/factory', icon: Factory, label: 'Factory' },
+  { to: '/litres', icon: Droplets, label: 'Litres Ledger' },
   { to: '/shops', icon: Store, label: 'Shops' },
   { to: '/payments', icon: CreditCard, label: 'Farmer Payments' },
   { to: '/payroll', icon: Briefcase, label: 'Staff Payroll' },

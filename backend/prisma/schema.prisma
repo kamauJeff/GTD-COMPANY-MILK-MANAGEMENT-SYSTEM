@@ -383,3 +383,30 @@ model LiquidRecord {
 
   @@unique([routeId, recordDate])
 }
+
+// ─── Litres Ledger ────────────────────────────────────────────────────────────
+
+model LitresEntry {
+  id          Int      @id @default(autoincrement())
+  section     String   // 'routes', 'brokers', 'issues', 'sales'
+  name        String   // e.g. 'KARIAINI', 'MUGWE', 'REJECT - FACTORY', 'KCU'
+  day         Int      // 1-31
+  month       Int
+  year        Int
+  value       Decimal  @default(0)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([section, name, day, month, year])
+}
+
+model LitresBalance {
+  id      Int    @id @default(autoincrement())
+  day     Int    // carry-forward balance AT END of this day
+  month   Int
+  year    Int
+  balance Decimal @default(0)
+
+  @@unique([day, month, year])
+}

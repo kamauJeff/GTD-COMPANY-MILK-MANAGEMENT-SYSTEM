@@ -13,6 +13,7 @@ import PaymentsPage from './pages/PaymentsPage';
 import PayrollPage from './pages/PayrollPage';
 import ReportsPage from './pages/ReportsPage';
 import AIPage from './pages/AIPage';
+import LitresPage from './pages/LitresPage';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const token = useAuthStore((s) => s.token);
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="payroll" element={<PayrollPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="ai" element={<AIPage />} />
+        <Route path="litres" element={<LitresPage />} />
       </Route>
     </Routes>
   );

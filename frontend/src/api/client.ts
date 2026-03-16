@@ -31,13 +31,14 @@ export const authApi = {
 };
 
 export const farmersApi = {
-  list:        (params?: any)              => api.get('/api/farmers', { params }),
-  get:         (id: number)                => api.get(`/api/farmers/${id}`),
-  create:      (data: any)                 => api.post('/api/farmers', data),
-  update:      (id: number, data: any)     => api.put(`/api/farmers/${id}`, data),
-  deactivate:  (id: number)                => api.delete(`/api/farmers/${id}`),
-  importExcel: (file: File)                => { const fd = new FormData(); fd.append('file', file); return api.post('/api/farmers/import', fd); },
-  exportExcel: ()                          => api.get('/api/farmers/export', { responseType: 'blob' }),
+  list:        (params?: any)          => api.get('/api/farmers', { params }),
+  get:         (id: number)            => api.get(`/api/farmers/${id}`),
+  create:      (data: any)             => api.post('/api/farmers', data),
+  update:      (id: number, data: any) => api.put(`/api/farmers/${id}`, data),
+  deactivate:  (id: number)            => api.delete(`/api/farmers/${id}`),
+  importExcel: (file: File)            => { const fd = new FormData(); fd.append('file', file); return api.post('/api/farmers/import', fd); },
+  exportExcel: ()                      => api.get('/api/farmers/export', { responseType: 'blob' }),
+  fixPhones:   ()                      => api.post('/api/farmers/fix-phones'),
 };
 
 export const routesApi = {
@@ -47,80 +48,38 @@ export const routesApi = {
 };
 
 export const collectionsApi = {
-  list:            (params?: any)   => api.get('/api/collections', { params }),
-  dailyTotals:     (date?: string)  => api.get('/api/collections/daily-totals', { params: { date } }),
-  create:          (data: any)      => api.post('/api/collections', data),
-  batchSync:       (records: any[]) => api.post('/api/collections/batch', { records }),
-  journal:         (params: any)    => api.get('/api/collections/journal', { params }),
-  debts:           (params: any)    => api.get('/api/collections/debts', { params }),
-  recordDeduction: (data: any)      => api.post('/api/collections/deduction', data),
-  deleteDeduction: (id: number)     => api.delete(`/api/collections/deduction/${id}`),
-  searchFarmers:   (q: string)      => api.get('/api/farmers', { params: { search: q, limit: 10 } }),
+  list: (params?: any) => api.get('/api/collections', { params }),
+  dailyTotals: (date?: string) => api.get('/api/collections/daily-totals', { params: { date } }),
+  create: (data: any) => api.post('/api/collections', data),
+  batchSync: (records: any[]) => api.post('/api/collections/batch', { records }),
 };
 
 export const factoryApi = {
-  stats:          (params: any)  => api.get('/api/factory/stats', { params }),
-  nextBatchNo:    ()             => api.get('/api/factory/next-batch-no'),
-  graders:        ()             => api.get('/api/factory/graders'),
-  drivers:        ()             => api.get('/api/factory/drivers'),
-  receipts:       (params?: any) => api.get('/api/factory/receipts', { params }),
-  createReceipt:  (data: any)    => api.post('/api/factory/receipts', data),
-  deleteReceipt:  (id: number)   => api.delete(`/api/factory/receipts/${id}`),
-  batches:        (params?: any) => api.get('/api/factory/batches', { params }),
-  createBatch:    (data: any)    => api.post('/api/factory/batches', data),
-  updateBatch:    (id: number, data: any) => api.put(`/api/factory/batches/${id}`, data),
-  deleteBatch:    (id: number)   => api.delete(`/api/factory/batches/${id}`),
-  deliveries:     (params?: any) => api.get('/api/factory/deliveries', { params }),
-  createDelivery: (data: any)    => api.post('/api/factory/deliveries', data),
-  deleteDelivery:  (id: number)   => api.delete(`/api/factory/deliveries/${id}`),
-  liquidGrid:      (params: any)  => api.get('/api/factory/liquid', { params }),
-  saveLiquid:      (data: any)    => api.post('/api/factory/liquid', data),
-  deleteLiquid:    (id: number)   => api.delete(`/api/factory/liquid/${id}`),
-  chargeLoss:      (data: any)    => api.post('/api/factory/liquid/charge', data),
-  liquidExcel:     (params: any)  => api.get('/api/factory/liquid/excel', { params, responseType: 'blob' }),
+  receipts: (params?: any) => api.get('/api/factory/receipts', { params }),
+  createReceipt: (data: any) => api.post('/api/factory/receipts', data),
+  batches: () => api.get('/api/factory/batches'),
+  createBatch: (data: any) => api.post('/api/factory/batches', data),
 };
 
 export const shopsApi = {
-  list:           (params?: any) => api.get('/api/shops', { params }),
-  monthlyGrid:    (params: any)  => api.get('/api/shops/monthly-grid', { params }),
-  dailySummary:   (date?: string)=> api.get('/api/shops/daily-summary', { params: { date } }),
-  sales:          (params?: any) => api.get('/api/shop-sales', { params }),
-  createSale:     (data: any)    => api.post('/api/shop-sales', data),
-  bulkSales:      (data: any)    => api.post('/api/shop-sales/bulk', data),
+  list: () => api.get('/api/shops'),
+  sales: (params?: any) => api.get('/api/shop-sales', { params }),
+  createSale: (data: any) => api.post('/api/shop-sales', data),
 };
 
 export const paymentsApi = {
-  list:                (params: any) => api.get('/api/payments', { params }),
-  routes:              () => api.get('/api/payments/routes'),
-  recordAdvance:       (data: any) => api.post('/api/payments/advance', data),
-  deleteAdvance:       (id: number) => api.delete(`/api/payments/advance/${id}`),
-  approve:             (data: any) => api.post('/api/payments/approve', data),
-  previewDisbursement: (params: any) => api.get('/api/disbursements/preview', { params }),
-  disburseMpesa:       (data: any) => api.post('/api/disbursements/mpesa', data),
-  syncStatus:          (params: any) => api.get('/api/disbursements/status', { params }),
+  preview: (farmerId: number, params: any) => api.get(`/api/payments/preview/${farmerId}`, { params }),
+  runPayments: (data: any) => api.post('/api/payments/run', data),
+  addAdvance: (data: any) => api.post('/api/payments/advances', data),
 };
 
 export const payrollApi = {
-  getPayroll:         (params: any)           => api.get('/api/payroll', { params }),
-  runPayroll:         (data: any)             => api.post('/api/payroll/run', data),
-  approvePayroll:     (data: any)             => api.post('/api/payroll/approve', data),
-  addDeduction:       (data: any)             => api.post('/api/payroll/deduction', data),
-  setSalary:          (data: any)             => api.post('/api/payroll/set-salary', data),
-  removeFromPayroll:  (id: number)            => api.delete(`/api/payroll/${id}`),
-  getRemittance:      (params: any)           => api.get('/api/payroll/remittance', { params, responseType: 'blob' }),
-  getEmployees:       (params?: any)          => api.get('/api/payroll/employees', { params }),
-  createEmployee:     (data: any)             => api.post('/api/payroll/employees', data),
-  updateEmployee:     (id: number, data: any) => api.put(`/api/payroll/employees/${id}`, data),
-  deactivateEmployee: (id: number)            => api.delete(`/api/payroll/employees/${id}`),
+  list: (params?: any) => api.get('/api/payroll', { params }),
+  run: (month: number, year: number) => api.post('/api/payroll/run', { month, year }),
 };
 
 export const reportsApi = {
-  collectionGrid:        (params: any)              => api.get('/api/reports/collection-grid', { params }),
-  collectionGridExcel:   (params: any)              => api.get('/api/reports/collection-grid/excel', { params, responseType: 'blob' }),
-  farmerStatement:       (farmerId: number, p: any) => api.get(`/api/reports/farmer-statement/${farmerId}`, { params: p }),
-  routePerformance:      (params: any)              => api.get('/api/reports/route-performance', { params }),
-  routePerformanceExcel: (params: any)              => api.get('/api/reports/route-performance/excel', { params, responseType: 'blob' }),
-  paymentSummary:        (params: any)              => api.get('/api/reports/payment-summary', { params }),
-  paymentSummaryExcel:   (params: any)              => api.get('/api/reports/payment-summary/excel', { params, responseType: 'blob' }),
-  factoryEfficiency:     (params: any)              => api.get('/api/reports/factory-efficiency', { params }),
+  collectionGrid: (params: any) => api.get('/api/reports/collection-grid', { params }),
+  farmerStatement: (farmerId: number, params: any) => api.get(`/api/reports/farmer-statement/${farmerId}`, { params }),
+  factoryEfficiency: (params: any) => api.get('/api/reports/factory-efficiency', { params }),
 };

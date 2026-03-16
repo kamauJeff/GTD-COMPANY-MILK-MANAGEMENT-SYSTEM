@@ -1,22 +1,27 @@
-// src/controllers/auth.controller.ts
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import prisma from '../config/prisma';
+import { prisma } from '../config/prisma';
 import { AppError } from '../middleware/errorHandler';
 
 export async function login(req: Request, res: Response) {
   const { code, password } = req.body;
   if (!code || !password) throw new AppError(400, 'code and password are required');
 
-  const employee = await prisma.employee.findUnique({ where: { code: code.toUpperCase() } });
-  if (!employee) throw new AppError(401, 'Invalid credentials');
+  // Use raw query to bypass Prisma client type cache issues
+  const result = await prisma.$queryRaw<any[]>`
+    SELECT id, code, name, role, "passwordHash" 
+    FROM "Employee" 
+    WHERE code = ${code.toUpperCase()} AND "isActive" = true
+    LIMIT 1
+  `;
 
-  // Check passwordHash
-  const hash = (employee as any).passwordHash;
-  if (!hash) throw new AppError(401, 'Account not configured. Contact admin.');
+  if (!result || result.length === 0) throw new AppError(401, 'Invalid credentials');
+  
+  const employee = result[0];
+  if (!employee.passwordHash) throw new AppError(401, 'Account not set up. Contact admin.');
 
-  const valid = await bcrypt.compare(password, hash);
+  const valid = await bcrypt.compare(password, employee.passwordHash);
   if (!valid) throw new AppError(401, 'Invalid credentials');
 
   const token = jwt.sign(
@@ -25,27 +30,38 @@ export async function login(req: Request, res: Response) {
     { expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as any }
   );
 
-  res.json({ token, employee: { id: employee.id, name: employee.name, role: employee.role, code: employee.code } });
+  res.json({ 
+    token, 
+    employee: { id: employee.id, name: employee.name, role: employee.role, code: employee.code } 
+  });
 }
 
 export async function me(req: Request, res: Response) {
-  const employee = await prisma.employee.findUnique({
-    where: { id: req.user!.sub },
-    select: { id: true, code: true, name: true, phone: true, role: true },
-  });
-  if (!employee) throw new AppError(404, 'Employee not found');
-  res.json(employee);
+  const result = await prisma.$queryRaw<any[]>`
+    SELECT id, code, name, phone, role 
+    FROM "Employee" 
+    WHERE id = ${req.user!.sub}
+    LIMIT 1
+  `;
+  if (!result || result.length === 0) throw new AppError(404, 'Employee not found');
+  res.json(result[0]);
 }
 
 export async function changePassword(req: Request, res: Response) {
   const { currentPassword, newPassword } = req.body;
-  const employee = await prisma.employee.findUnique({ where: { id: req.user!.sub } });
-  if (!employee) throw new AppError(404, 'Employee not found');
-
-  const valid = await bcrypt.compare(currentPassword, (employee as any).passwordHash ?? '');
+  
+  const result = await prisma.$queryRaw<any[]>`
+    SELECT id, "passwordHash" FROM "Employee" WHERE id = ${req.user!.sub} LIMIT 1
+  `;
+  if (!result || result.length === 0) throw new AppError(404, 'Employee not found');
+  
+  const employee = result[0];
+  const valid = await bcrypt.compare(currentPassword, employee.passwordHash ?? '');
   if (!valid) throw new AppError(401, 'Current password is incorrect');
 
   const hash = await bcrypt.hash(newPassword, 12);
-  await prisma.employee.update({ where: { id: employee.id }, data: { passwordHash: hash } as any });
+  await prisma.$executeRaw`
+    UPDATE "Employee" SET "passwordHash" = ${hash} WHERE id = ${req.user!.sub}
+  `;
   res.json({ message: 'Password updated' });
 }

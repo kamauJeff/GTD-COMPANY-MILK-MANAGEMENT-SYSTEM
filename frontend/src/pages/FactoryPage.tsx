@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { factoryApi } from '../api/client';
+import { LiquidCheck } from '../components/factory/LiquidCheck';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -263,79 +264,7 @@ export default function FactoryPage() {
 
       {/* LIQUID CHECK */}
       {tab === 'liquid' && (
-        <div className="space-y-4">
-          <div className="bg-white rounded-xl border p-5 shadow-sm max-w-md">
-            <h3 className="font-semibold mb-4 text-gray-800">Record Liquid Check</h3>
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <div><label className="text-xs text-gray-500 mb-1 block">Date</label>
-                  <input type="date" value={liquidForm.recordDate} onChange={e => setLiquidForm(f => ({...f, recordDate: e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                </div>
-                <div><label className="text-xs text-gray-500 mb-1 block">Received (L)</label>
-                  <input type="number" value={liquidForm.received} onChange={e => setLiquidForm(f => ({...f, received: e.target.value}))} placeholder="0" className="w-full px-3 py-2 border rounded-lg text-sm" />
-                </div>
-                <div><label className="text-xs text-gray-500 mb-1 block">Dispatched (L)</label>
-                  <input type="number" value={liquidForm.dispatched} onChange={e => setLiquidForm(f => ({...f, dispatched: e.target.value}))} placeholder="0" className="w-full px-3 py-2 border rounded-lg text-sm" />
-                </div>
-                <div><label className="text-xs text-gray-500 mb-1 block">Grader</label>
-                  <select value={liquidForm.graderId} onChange={e => setLiquidForm(f => ({...f, graderId: e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm">
-                    <option value="">Optional...</option>
-                    {graders.map((g: any) => <option key={g.id} value={g.id}>{g.name}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div><label className="text-xs text-gray-500 mb-1 block">Notes</label>
-                <input value={liquidForm.notes} onChange={e => setLiquidForm(f => ({...f, notes: e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm" />
-              </div>
-              <button onClick={() => saveLiquidMut.mutate()} disabled={saveLiquidMut.isPending}
-                className="w-full py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
-                {saveLiquidMut.isPending ? 'Saving...' : 'Save Record'}
-              </button>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-            {loadingLiquid ? (
-              <div className="text-center py-12 text-gray-400">Loading liquid data...</div>
-            ) : liquidGrid.length === 0 ? (
-              <div className="text-center py-12 text-gray-400">No liquid records for {MONTHS[month-1]} {year}</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="text-xs border-collapse" style={{ minWidth: `${200 + daysInMonth * 60}px` }}>
-                  <thead>
-                    <tr className="bg-gray-800 text-white">
-                      <th className="sticky left-0 bg-gray-800 px-3 py-2 text-left min-w-[160px] z-10">ROUTE</th>
-                      {Array.from({length: daysInMonth}, (_, i) => i + 1).map(d => (
-                        <th key={d} className="px-1 py-2 text-center w-14">{d}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {liquidGrid.map((row: any, idx: number) => (
-                      <tr key={idx} className={`border-b ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                        <td className="sticky left-0 px-3 py-2 font-medium text-gray-700 border-r bg-inherit z-10 text-xs">{row.route?.name}</td>
-                        {Array.from({length: daysInMonth}, (_, i) => i + 1).map(d => {
-                          const cell = row.days?.[d];
-                          const variance = cell ? Number(cell.variance) : null;
-                          return (
-                            <td key={d} className="px-1 py-2 text-center border-r border-gray-100">
-                              {cell ? (
-                                <div>
-                                  <div className="text-gray-700">{Number(cell.received).toFixed(0)}</div>
-                                  {variance !== null && <div className={`text-xs font-bold ${variance >= 0 ? 'text-green-600' : 'text-red-500'}`}>{variance >= 0 ? '+' : ''}{variance.toFixed(0)}</div>}
-                                </div>
-                              ) : <span className="text-gray-200">–</span>}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
+        <LiquidCheck graders={graders} month={month} year={year} />
       )}
     </div>
   );

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { factoryApi } from '../api/client';
+import { factoryApi } from '../../api/client';
 import { AlertTriangle, CheckCircle, TrendingUp } from 'lucide-react';
 
 interface Props {

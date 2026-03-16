@@ -3,8 +3,9 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
 import {
   LayoutDashboard, Users, Route, Milk, Factory, Store,
-  CreditCard, Briefcase, BarChart2, LogOut
+  CreditCard, Briefcase, BarChart2, LogOut, Sparkles, Droplets
 } from 'lucide-react';
+import { AIWidget } from '../AIWidget';
 
 const NAV = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
@@ -12,10 +13,12 @@ const NAV = [
   { to: '/routes', icon: Route, label: 'Routes' },
   { to: '/collections', icon: Milk, label: 'Collections' },
   { to: '/factory', icon: Factory, label: 'Factory' },
+  { to: '/litres', icon: Droplets, label: 'Litres Ledger' },
   { to: '/shops', icon: Store, label: 'Shops' },
   { to: '/payments', icon: CreditCard, label: 'Farmer Payments' },
   { to: '/payroll', icon: Briefcase, label: 'Staff Payroll' },
   { to: '/reports', icon: BarChart2, label: 'Reports' },
+  { to: '/ai', icon: Sparkles, label: 'Gutoria AI' },
 ];
 
 export default function Layout() {
@@ -29,8 +32,8 @@ export default function Layout() {
       {/* Sidebar */}
       <aside className="w-60 bg-white border-r flex flex-col">
         <div className="p-5 border-b">
-          <div className="text-lg font-bold text-green-700">ðŸ„ Gutoria Dairies</div>
-          <div className="text-xs text-gray-500 mt-0.5">{user?.name} Â· {user?.role}</div>
+          <div className="text-lg font-bold text-green-700">🐄 Gutoria Dairies</div>
+          <div className="text-xs text-gray-500 mt-0.5">{user?.name} · {user?.role}</div>
         </div>
 
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
@@ -67,7 +70,9 @@ export default function Layout() {
       <main className="flex-1 overflow-auto">
         <Outlet />
       </main>
+
+      {/* AI floating widget - available on every page */}
+      <AIWidget />
     </div>
   );
 }
-

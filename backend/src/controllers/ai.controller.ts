@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../config/prisma';
 import Anthropic from '@anthropic-ai/sdk';
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const anthropic = new Anthropic({ apiKey: (process.env.ANTHROPIC_API_KEY || '').trim() });
 
 // ─── Schema context for the AI ───────────────────────────────────────────────
 const SYSTEM_PROMPT = `You are Gutoria AI, the intelligent assistant for Gutoria Dairies Management System in Kenya.

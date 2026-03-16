@@ -17,6 +17,8 @@ router.get('/my-route', async (req, res) => {
   const route = employee.supervisedRoutes[0] ?? null;
   res.json({ employee: { id: employee.id, name: employee.name, code: employee.code, role: employee.role }, route });
 });
+
+router.get('/', async (req, res) => {
   const { role } = req.query;
   const where: any = { isActive: true };
   if (role) where.role = role;

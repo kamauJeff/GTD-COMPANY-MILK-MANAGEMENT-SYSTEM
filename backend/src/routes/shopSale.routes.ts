@@ -1,4 +1,3 @@
-// src/routes/shopSale.routes.ts
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
 import prisma from '../config/prisma';
@@ -12,44 +11,41 @@ router.get('/', async (req, res) => {
   if (shopId) where.shopId = Number(shopId);
   if (date) {
     const d = new Date(String(date));
-    const n = new Date(d);
-    n.setDate(n.getDate() + 1);
+    const n = new Date(d); n.setDate(n.getDate() + 1);
     where.saleDate = { gte: d, lt: n };
   }
   const sales = await prisma.shopSale.findMany({
-    where,
-    orderBy: { saleDate: 'desc' },
+    where, include: { shop: { select: { id: true, name: true } } }, orderBy: { saleDate: 'desc' },
   });
   res.json(sales);
 });
 
 router.post('/', async (req, res) => {
-  const { shopId, saleDate, litresSold, cashCollected, sellingPrice } = req.body;
-  const expectedRevenue = Number(litresSold) * Number(sellingPrice);
+  const { shopId, saleDate, litresSold, cashCollected, tillAmount, expectedRevenue, variance } = req.body;
   const sale = await prisma.shopSale.create({
     data: {
-      shopId,
+      shopId: Number(shopId),
       saleDate: new Date(saleDate),
-      litresSold,
-      cashCollected,
-      expectedRevenue,
-      variance: expectedRevenue - Number(cashCollected),
+      litresSold: Number(litresSold),
+      expectedRevenue: Number(expectedRevenue || 0),
+      cashCollected: Number(cashCollected || 0),
+      tillAmount: Number(tillAmount || 0),
+      variance: Number(variance || 0),
     },
+    include: { shop: { select: { id: true, name: true } } },
   });
   res.status(201).json(sale);
 });
 
-router.put('/:id', async (req, res) => {
-  const sale = await prisma.shopSale.update({
-    where: { id: Number(req.params.id) },
-    data: req.body,
-  });
-  res.json(sale);
+router.post('/bulk', async (req, res) => {
+  const { sales } = req.body;
+  const created = await prisma.shopSale.createMany({ data: sales.map((s: any) => ({ ...s, saleDate: new Date(s.saleDate) })) });
+  res.json(created);
 });
 
 router.delete('/:id', async (req, res) => {
   await prisma.shopSale.delete({ where: { id: Number(req.params.id) } });
-  res.json({ message: 'Deleted' });
+  res.json({ success: true });
 });
 
 export default router;

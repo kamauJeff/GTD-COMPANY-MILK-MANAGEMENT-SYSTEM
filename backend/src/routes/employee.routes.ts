@@ -7,7 +7,16 @@ import bcrypt from 'bcryptjs';
 const router = Router();
 router.use(authenticate);
 
-router.get('/', async (req, res) => {
+// GET /api/employees/my-route — returns the grader's assigned route + farmers
+router.get('/my-route', async (req, res) => {
+  const employee = await prisma.employee.findUnique({
+    where: { id: req.user!.sub },
+    include: { supervisedRoutes: { include: { farmers: { where: { isActive: true }, orderBy: { name: 'asc' } } } } },
+  });
+  if (!employee) return res.status(404).json({ error: 'Not found' });
+  const route = employee.supervisedRoutes[0] ?? null;
+  res.json({ employee: { id: employee.id, name: employee.name, code: employee.code, role: employee.role }, route });
+});
   const { role } = req.query;
   const where: any = { isActive: true };
   if (role) where.role = role;
@@ -28,4 +37,3 @@ router.put('/:id', authorize('ADMIN', 'OFFICE'), async (req, res) => {
 });
 
 export default router;
-

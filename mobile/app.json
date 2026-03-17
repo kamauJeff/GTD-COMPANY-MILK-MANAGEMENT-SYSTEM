@@ -5,15 +5,12 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "icon": "./assets/icon.png",
     "splash": {
-      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#0d1f33"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0d1f33"
       },
       "package": "com.gutoria.dairies",
@@ -27,18 +24,10 @@
       "bundleIdentifier": "com.gutoria.dairies",
       "buildNumber": "1.0.0"
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
     "extra": {
       "eas": {
-        "projectId": "gutoria-dairies-mobile"
+        "projectId": "4cce39d8-e57c-4d94-a28a-527ad85da2e6"
       }
-    },
-    "plugins": [
-      [
-        "expo-sqlite"
-      ]
-    ]
+    }
   }
 }

@@ -170,3 +170,64 @@ export async function getGraderDailyTotal(req: Request, res: Response) {
     })),
   });
 }
+
+// Journal grid — farmers x days for a given month/route
+export async function getJournalGrid(req: Request, res: Response) {
+  const { month, year, routeId } = req.query;
+  const m = Number(month) || new Date().getMonth() + 1;
+  const y = Number(year) || new Date().getFullYear();
+
+  const start = new Date(y, m - 1, 1);
+  const end   = new Date(y, m, 1);
+
+  const where: any = { collectedAt: { gte: start, lt: end } };
+  if (routeId) where.routeId = Number(routeId);
+
+  const collections = await prisma.milkCollection.findMany({
+    where,
+    include: {
+      farmer: { select: { id: true, code: true, name: true } },
+      route:  { select: { id: true, code: true, name: true } },
+    },
+    orderBy: { collectedAt: 'asc' },
+  });
+
+  // Build grid: { farmerId -> { name, code, route, days: { day: litres }, total } }
+  const farmerMap: Record<number, any> = {};
+  for (const c of collections) {
+    const fid = c.farmerId;
+    const day = new Date(c.collectedAt).getDate();
+    if (!farmerMap[fid]) {
+      farmerMap[fid] = {
+        id: fid,
+        code: c.farmer.code,
+        name: c.farmer.name,
+        route: c.route,
+        days: {},
+        total: 0,
+      };
+    }
+    farmerMap[fid].days[day] = (farmerMap[fid].days[day] || 0) + Number(c.litres);
+    farmerMap[fid].total += Number(c.litres);
+  }
+
+  // Route totals per day
+  const dayTotals: Record<number, number> = {};
+  for (const f of Object.values(farmerMap)) {
+    for (const [day, litres] of Object.entries(f.days)) {
+      dayTotals[Number(day)] = (dayTotals[Number(day)] || 0) + Number(litres);
+    }
+  }
+
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const farmers = Object.values(farmerMap).sort((a, b) => a.name.localeCompare(b.name));
+
+  res.json({
+    farmers,
+    dayTotals,
+    daysInMonth,
+    month: m,
+    year: y,
+    grandTotal: farmers.reduce((s, f) => s + f.total, 0),
+  });
+}

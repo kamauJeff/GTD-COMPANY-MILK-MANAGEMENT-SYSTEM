@@ -45,16 +45,16 @@ export const routesApi = {
 };
 
 export const collectionsApi = {
-  list:          (params?: any)   => api.get('/api/collections', { params }),
-  dailyTotals:   (date?: string)  => api.get('/api/collections/daily-totals', { params: { date } }),
-  graderTotal:   (params: any)    => api.get('/api/collections/grader-total', { params }),
-  create:        (data: any)      => api.post('/api/collections', data),
-  batchSync:     (records: any[]) => api.post('/api/collections/batch', { records }),
-  journal:       (params: any)    => api.get('/api/collections/journal', { params }),
-  debts:         (params: any)    => api.get('/api/collections/debts', { params }),
-  recordDeduction: (data: any)    => api.post('/api/collections/deduction', data),
-  deleteDeduction: (id: number)   => api.delete(`/api/collections/deduction/${id}`),
-  searchFarmers: (q: string)      => api.get('/api/farmers', { params: { search: q, limit: 10 } }),
+  list:            (params?: any)   => api.get('/api/collections', { params }),
+  dailyTotals:     (date?: string)  => api.get('/api/collections/daily-totals', { params: { date } }),
+  graderTotal:     (params: any)    => api.get('/api/collections/grader-total', { params }),
+  journal:         (params: any)    => api.get('/api/collections/journal', { params }),
+  create:          (data: any)      => api.post('/api/collections', data),
+  batchSync:       (records: any[]) => api.post('/api/collections/batch', { records }),
+  searchFarmers:   (q: string)      => api.get('/api/farmers', { params: { search: q, limit: 10 } }),
+  debts:           (params: any)    => api.get('/api/collections/debts', { params }),
+  recordDeduction: (data: any)      => api.post('/api/collections/deduction', data),
+  deleteDeduction: (id: number)     => api.delete(`/api/collections/deduction/${id}`),
 };
 
 export const factoryApi = {

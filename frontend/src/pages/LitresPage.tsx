@@ -1,33 +1,32 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { RefreshCw, Plus, Edit3 } from 'lucide-react';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-
-const SECTIONS = {
-  routes: 'ROUTES',
-  brokers: 'BROKERS',
-  issues: 'ISSUES',
-  sales: 'SALES',
-};
 
 export default function LitresPage() {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [year, setYear] = useState(now.getFullYear());
-  const [editCell, setEditCell] = useState<{section: string, name: string, day: number} | null>(null);
+  const [year, setYear]   = useState(now.getFullYear());
+  const [editCell, setEditCell] = useState<{section: string; name: string; day: number} | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [openingBal, setOpeningBal] = useState('');
+  const [showAddRow, setShowAddRow] = useState<string | null>(null);
+  const [newRowName, setNewRowName] = useState('');
   const qc = useQueryClient();
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['litres-ledger', month, year],
     queryFn: () => api.get('/api/factory/litres-ledger', { params: { month, year } }),
-    retry: 1,
+    refetchInterval: 60000, // auto-refresh every 60s
   });
 
-  const ledger = data?.data || {};
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const ledger    = data?.data || {};
+  const daysInMonth = ledger.daysInMonth || new Date(year, month, 0).getDate();
+  const days      = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const summary   = ledger.dailySummary || {};
+  const balance   = ledger.balance || {};
 
   const saveMut = useMutation({
     mutationFn: (d: any) => api.post('/api/factory/litres-ledger', d),
@@ -35,31 +34,29 @@ export default function LitresPage() {
     onError: (e: any) => alert(e?.response?.data?.error || 'Failed to save'),
   });
 
-  const handleCellClick = (section: string, name: string, day: number, currentVal: number) => {
-    setEditCell({ section, name, day });
-    setEditValue(currentVal > 0 ? currentVal.toFixed(1) : '');
-  };
+  const setBalMut = useMutation({
+    mutationFn: (bal: number) => api.post('/api/factory/litres-ledger/set-balance', { month, year, balance: bal }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['litres-ledger'] }); setOpeningBal(''); },
+  });
+
+  const addRowMut = useMutation({
+    mutationFn: (d: any) => api.post('/api/factory/litres-ledger/add-row', d),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['litres-ledger'] }); setShowAddRow(null); setNewRowName(''); },
+    onError: (e: any) => alert(e?.response?.data?.error || 'Failed'),
+  });
 
   const handleSave = () => {
     if (!editCell) return;
-    saveMut.mutate({
-      section: editCell.section,
-      name: editCell.name,
-      day: editCell.day,
-      month, year,
-      value: Number(editValue) || 0,
-    });
+    saveMut.mutate({ section: editCell.section, name: editCell.name, day: editCell.day, month, year, value: Number(editValue) || 0 });
   };
 
-  const getVal = (section: string, name: string, day: number) => {
-    return ledger[section]?.[name]?.[day] || 0;
-  };
+  const getVal = (section: string, name: string, day: number) =>
+    ledger[section]?.[name]?.[day] || 0;
 
-  const getRowTotal = (section: string, name: string) => {
-    return days.reduce((s, d) => s + (ledger[section]?.[name]?.[d] || 0), 0);
-  };
+  const getRowTotal = (section: string, name: string) =>
+    days.reduce((s, d) => s + (ledger[section]?.[name]?.[d] || 0), 0);
 
-  const getDayTotal = (section: string, day: number) => {
+  const getSectionDayTotal = (section: string, day: number) => {
     if (!ledger[section]) return 0;
     return Object.keys(ledger[section]).reduce((s, name) => s + (ledger[section][name][day] || 0), 0);
   };
@@ -69,30 +66,34 @@ export default function LitresPage() {
     return Object.keys(ledger[section]).reduce((s, name) => s + getRowTotal(section, name), 0);
   };
 
-  // Computed values per day
-  const getAvailable = (day: number) => {
-    const bal = ledger.balance?.[day - 1] || 0; // previous day balance
-    return bal + getDayTotal('routes', day) + getDayTotal('brokers', day) - getDayTotal('issues', day);
-  };
+  // Month totals
+  const totalRoutes   = getSectionTotal('routes');
+  const totalBrokers  = getSectionTotal('brokers');
+  const totalIssues   = getSectionTotal('issues');
+  const totalSales    = getSectionTotal('sales');
+  const totalAvailable = totalRoutes + totalBrokers - totalIssues;
+  const grandBalance  = totalAvailable - totalSales;
 
-  const getBalance = (day: number) => {
-    return getAvailable(day) - getDayTotal('sales', day);
-  };
+  // Today's numbers
+  const today = now.getDate();
+  const todaySummary = summary[today] || {};
 
-  const routeNames: string[] = Object.keys(ledger.routes || {});
-  const brokerNames: string[] = Object.keys(ledger.brokers || {});
-  const issueNames: string[] = Object.keys(ledger.issues || {});
-  const salesNames: string[] = Object.keys(ledger.sales || {});
-
-  const SectionRow = ({ section, name, color }: { section: string; name: string; color: string }) => (
+  // Section row component
+  const DataRow = ({ section, name, isAuto }: { section: string; name: string; isAuto: boolean }) => (
     <tr className="border-b hover:bg-gray-50 group">
-      <td className={`sticky left-0 z-10 px-3 py-2 text-xs font-medium bg-white border-r ${color}`}>{name}</td>
+      <td className={`sticky left-0 z-10 px-3 py-2 text-xs font-medium border-r bg-white ${isAuto ? 'text-blue-700' : 'text-gray-700'}`}>
+        <div className="flex items-center gap-1">
+          {name}
+          {isAuto && <span className="text-xs text-blue-400 font-normal ml-1">auto</span>}
+        </div>
+      </td>
       {days.map(d => {
         const val = getVal(section, name, d);
         const isEditing = editCell?.section === section && editCell?.name === name && editCell?.day === d;
+        const canEdit = !isAuto;
         return (
           <td key={d} className="px-0.5 py-1 text-center border-r border-gray-100 min-w-[52px]"
-            onClick={() => !isEditing && handleCellClick(section, name, d, val)}>
+            onClick={() => canEdit && !isEditing && setEditCell({ section, name, day: d }) && setEditValue(val > 0 ? val.toString() : '')}>
             {isEditing ? (
               <input autoFocus type="number" value={editValue}
                 onChange={e => setEditValue(e.target.value)}
@@ -101,66 +102,77 @@ export default function LitresPage() {
                 className="w-full px-1 py-0.5 text-xs text-center border border-green-400 rounded outline-none bg-green-50"
                 style={{ width: '48px' }} />
             ) : (
-              <span className={`text-xs cursor-pointer ${val > 0 ? 'font-medium text-gray-800' : 'text-gray-200'} group-hover:text-green-600`}>
+              <span className={`text-xs ${val > 0 ? 'font-medium text-gray-800' : 'text-gray-200'} ${canEdit ? 'cursor-pointer group-hover:text-green-600' : ''}`}>
                 {val > 0 ? val.toFixed(1) : '–'}
               </span>
             )}
           </td>
         );
       })}
-      <td className={`sticky right-0 px-2 py-2 text-xs font-bold text-right border-l bg-gray-50 ${color}`}>
+      <td className="sticky right-0 px-2 py-2 text-xs font-bold text-right border-l bg-gray-50 text-gray-700">
         {getRowTotal(section, name).toFixed(1)}
       </td>
     </tr>
   );
 
-  const TotalRow = ({ label, section, bgClass }: { label: string; section: string; bgClass: string }) => (
-    <tr className={bgClass}>
-      <td className={`sticky left-0 z-10 px-3 py-2 text-xs font-bold border-r ${bgClass}`}>{label}</td>
+  const SectionHeader = ({ label, color, section, canAdd }: { label: string; color: string; section: string; canAdd?: boolean }) => (
+    <tr className={`${color} text-white`}>
+      <td className={`sticky left-0 z-10 px-3 py-1.5 text-xs font-bold ${color} border-r flex items-center justify-between`}>
+        <span>{label}</span>
+        {canAdd && (
+          <button onClick={() => setShowAddRow(section)} className="text-white opacity-70 hover:opacity-100 ml-2">
+            <Plus size={12} />
+          </button>
+        )}
+      </td>
+      {days.map(d => <td key={d} className="border-r border-opacity-30 py-1.5" />)}
+      <td className="sticky right-0 border-l" />
+    </tr>
+  );
+
+  const TotalRow = ({ label, section, bg, textColor }: { label: string; section: string; bg: string; textColor: string }) => (
+    <tr className={bg}>
+      <td className={`sticky left-0 z-10 px-3 py-2 text-xs font-bold border-r ${bg} ${textColor}`}>{label}</td>
       {days.map(d => (
-        <td key={d} className="px-1 py-2 text-center text-xs font-bold border-r">
-          {getDayTotal(section, d) > 0 ? getDayTotal(section, d).toFixed(1) : '–'}
+        <td key={d} className={`px-1 py-2 text-center text-xs font-bold border-r ${textColor}`}>
+          {getSectionDayTotal(section, d) > 0 ? getSectionDayTotal(section, d).toFixed(1) : '–'}
         </td>
       ))}
-      <td className={`sticky right-0 px-2 py-2 text-xs font-bold text-right border-l ${bgClass}`}>
+      <td className={`sticky right-0 px-2 py-2 text-xs font-bold text-right border-l ${bg} ${textColor}`}>
         {getSectionTotal(section).toFixed(1)}
       </td>
     </tr>
   );
 
-  const SummaryRow = ({ label, fn, bgClass, textClass }: { label: string; fn: (d: number) => number; bgClass: string; textClass: string }) => (
-    <tr className={bgClass}>
-      <td className={`sticky left-0 z-10 px-3 py-2 text-xs font-bold border-r ${bgClass} ${textClass}`}>{label}</td>
+  const ComputedRow = ({ label, fn, bg, textColor }: { label: string; fn: (d: number) => number; bg: string; textColor: string }) => (
+    <tr className={bg}>
+      <td className={`sticky left-0 z-10 px-3 py-2 text-xs font-bold border-r ${bg} ${textColor}`}>{label}</td>
       {days.map(d => {
         const v = fn(d);
         return (
-          <td key={d} className={`px-1 py-2 text-center text-xs font-bold border-r ${textClass}`}>
+          <td key={d} className={`px-1 py-2 text-center text-xs font-bold border-r ${v < 0 ? 'text-red-300' : textColor}`}>
             {v !== 0 ? v.toFixed(1) : '–'}
           </td>
         );
       })}
-      <td className={`sticky right-0 px-2 py-2 text-xs font-bold text-right border-l ${bgClass} ${textClass}`}>
+      <td className={`sticky right-0 px-2 py-2 text-xs font-bold text-right border-l ${bg} ${textColor}`}>
         {days.reduce((s, d) => s + fn(d), 0).toFixed(1)}
       </td>
     </tr>
   );
 
-  // Summary stats
-  const totalRoutes = getSectionTotal('routes');
-  const totalBrokers = getSectionTotal('brokers');
-  const totalIssues = getSectionTotal('issues');
-  const totalSales = getSectionTotal('sales');
-  const totalAvailable = totalRoutes + totalBrokers - totalIssues;
-  const totalBalance = totalAvailable - totalSales;
-
   return (
     <div className="p-6">
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Litres Ledger</h1>
-          <p className="text-sm text-gray-500">Daily milk flow — Routes · Brokers · Issues · Sales · Balance</p>
+          <p className="text-sm text-gray-500">Routes auto-fetch from collections · Sales auto-fetch from shop deliveries · Brokers & issues are manual</p>
         </div>
         <div className="flex gap-2 items-center">
+          <button onClick={() => refetch()} className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50" title="Refresh">
+            <RefreshCw size={16} className="text-gray-500" />
+          </button>
           <select value={month} onChange={e => setMonth(Number(e.target.value))} className="px-3 py-2 border rounded-lg text-sm">
             {MONTHS.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
           </select>
@@ -170,101 +182,181 @@ export default function LitresPage() {
         </div>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-6">
+      {/* Today's live snapshot */}
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">
         {[
-          { label: 'Routes Total', value: totalRoutes, color: 'text-blue-700', bg: 'bg-blue-50 border-blue-200' },
-          { label: 'Brokers', value: totalBrokers, color: 'text-purple-700', bg: 'bg-purple-50 border-purple-200' },
-          { label: 'Issues', value: totalIssues, color: 'text-red-600', bg: 'bg-red-50 border-red-200' },
-          { label: 'Available', value: totalAvailable, color: 'text-green-700', bg: 'bg-green-50 border-green-200' },
-          { label: 'Total Sales', value: totalSales, color: 'text-orange-700', bg: 'bg-orange-50 border-orange-200' },
-          { label: 'Balance', value: totalBalance, color: totalBalance >= 0 ? 'text-green-700' : 'text-red-600', bg: totalBalance >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200' },
+          { label: `Today's Collections`, value: `${(todaySummary.routesTotal || 0).toFixed(1)} L`, color: 'text-blue-700', bg: 'bg-blue-50 border-blue-200' },
+          { label: 'Brokers Today', value: `${(todaySummary.brokersTotal || 0).toFixed(1)} L`, color: 'text-purple-700', bg: 'bg-purple-50 border-purple-200' },
+          { label: 'Issues Today', value: `${(todaySummary.issuesTotal || 0).toFixed(1)} L`, color: 'text-red-600', bg: 'bg-red-50 border-red-200' },
+          { label: 'Available Today', value: `${(todaySummary.available || 0).toFixed(1)} L`, color: 'text-green-700', bg: 'bg-green-50 border-green-200' },
+          { label: 'Sales Today', value: `${(todaySummary.salesTotal || 0).toFixed(1)} L`, color: 'text-orange-700', bg: 'bg-orange-50 border-orange-200' },
+          { label: 'Closing Balance', value: `${(todaySummary.closingBalance || 0).toFixed(1)} L`, color: (todaySummary.closingBalance || 0) < 0 ? 'text-red-600' : 'text-green-700', bg: (todaySummary.closingBalance || 0) < 0 ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200' },
         ].map(s => (
           <div key={s.label} className={`rounded-xl border p-3 ${s.bg}`}>
             <div className="text-xs text-gray-400 mb-1">{s.label}</div>
-            <div className={`text-lg font-bold ${s.color}`}>{s.value.toFixed(0)} L</div>
+            <div className={`text-lg font-bold ${s.color}`}>{s.value}</div>
           </div>
         ))}
       </div>
 
-      {/* Tip */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-xs text-blue-700 mb-4">
-        💡 Click any cell to edit. Press Enter to save, Escape to cancel.
+      {/* Month summary */}
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-4">
+        {[
+          { label: 'Month Routes', value: `${totalRoutes.toFixed(0)} L`, color: 'text-blue-700' },
+          { label: 'Month Brokers', value: `${totalBrokers.toFixed(0)} L`, color: 'text-purple-700' },
+          { label: 'Month Issues', value: `${totalIssues.toFixed(0)} L`, color: 'text-red-600' },
+          { label: 'Month Available', value: `${totalAvailable.toFixed(0)} L`, color: 'text-green-700' },
+          { label: 'Month Sales', value: `${totalSales.toFixed(0)} L`, color: 'text-orange-700' },
+          { label: 'Month Balance', value: `${grandBalance.toFixed(0)} L`, color: grandBalance < 0 ? 'text-red-600' : 'text-green-700' },
+        ].map(s => (
+          <div key={s.label} className="bg-white rounded-xl border p-3 shadow-sm">
+            <div className="text-xs text-gray-400 mb-1">{s.label}</div>
+            <div className={`text-lg font-bold ${s.color}`}>{s.value}</div>
+          </div>
+        ))}
       </div>
 
+      {/* Opening balance setter */}
+      <div className="bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 flex items-center gap-3 mb-4">
+        <span className="text-sm text-yellow-700 font-medium">Opening Balance (b/f from previous month):</span>
+        <span className="font-bold text-yellow-800">{Number(balance[0] || 0).toFixed(1)} L</span>
+        <input type="number" value={openingBal} onChange={e => setOpeningBal(e.target.value)}
+          placeholder="Set b/f litres..." className="px-3 py-1.5 border border-yellow-300 rounded-lg text-sm w-40 bg-white" />
+        <button onClick={() => setBalMut.mutate(Number(openingBal))} disabled={!openingBal || setBalMut.isPending}
+          className="px-3 py-1.5 bg-yellow-500 text-white rounded-lg text-sm font-medium hover:bg-yellow-600 disabled:opacity-50">
+          {setBalMut.isPending ? 'Saving...' : 'Set'}
+        </button>
+      </div>
+
+      {/* Tip */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-xs text-blue-600 mb-4">
+        💡 <strong>Routes</strong> and <strong>Sales</strong> are auto-fetched from the system. Click any <strong>Broker</strong> or <strong>Issue</strong> cell to edit. Press Enter to save.
+      </div>
+
+      {/* Main grid */}
       {isLoading ? (
-        <div className="bg-white rounded-xl border p-12 text-center text-gray-400">Loading ledger...</div>
+        <div className="bg-white rounded-xl border p-16 text-center text-gray-400">Loading ledger...</div>
       ) : (
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="text-xs border-collapse" style={{ minWidth: `${180 + daysInMonth * 54 + 60}px` }}>
+            <table className="text-xs border-collapse" style={{ minWidth: `${190 + daysInMonth * 54 + 60}px` }}>
               <thead>
                 <tr className="bg-gray-800 text-white">
-                  <th className="sticky left-0 bg-gray-800 z-20 px-3 py-2 text-left min-w-[160px]">ROUTE / SOURCE</th>
-                  {days.map(d => <th key={d} className="px-1 py-2 text-center w-14 font-medium">{d}</th>)}
-                  <th className="sticky right-0 bg-gray-800 px-3 py-2 text-right min-w-[60px]">TOTAL</th>
+                  <th className="sticky left-0 bg-gray-800 z-20 px-3 py-2.5 text-left min-w-[190px]">ROUTE / SOURCE</th>
+                  {days.map(d => (
+                    <th key={d} className={`px-1 py-2.5 text-center w-14 font-medium ${summary[d]?.routesTotal > 0 ? 'text-green-300' : 'text-gray-500'}`}>{d}</th>
+                  ))}
+                  <th className="sticky right-0 bg-gray-800 px-3 py-2.5 text-right min-w-[65px]">TOTAL</th>
                 </tr>
               </thead>
               <tbody>
-                {/* Balance b/f */}
+                {/* Balance b/f row */}
                 <tr className="bg-yellow-50 border-b">
                   <td className="sticky left-0 z-10 px-3 py-2 text-xs font-bold text-yellow-700 bg-yellow-50 border-r">Balance b/f</td>
-                  {days.map(d => <td key={d} className="px-1 py-2 text-center text-xs text-yellow-600 font-medium border-r">
-                    {ledger.balance?.[d-1] > 0 ? Number(ledger.balance[d-1]).toFixed(1) : '–'}
-                  </td>)}
-                  <td className="sticky right-0 bg-yellow-50 px-2 py-2 border-l"></td>
+                  {days.map(d => (
+                    <td key={d} className="px-1 py-2 text-center text-xs text-yellow-600 font-medium border-r">
+                      {d === 1 && balance[0] > 0 ? Number(balance[0]).toFixed(1) : '–'}
+                    </td>
+                  ))}
+                  <td className="sticky right-0 bg-yellow-50 px-2 py-2 border-l text-xs font-bold text-yellow-700 text-right">
+                    {Number(balance[0] || 0).toFixed(1)}
+                  </td>
                 </tr>
 
-                {/* ROUTES section header */}
-                <tr className="bg-blue-700 text-white">
-                  <td className="sticky left-0 z-10 px-3 py-1.5 text-xs font-bold bg-blue-700 border-r" colSpan={1}>ROUTES</td>
-                  {days.map(d => <td key={d} className="border-r border-blue-600" />)}
-                  <td className="sticky right-0 bg-blue-700 border-l" />
-                </tr>
-                {routeNames.map(name => <SectionRow key={name} section="routes" name={name} color="text-blue-700" />)}
-                <TotalRow label="ROUTES TOTAL" section="routes" bgClass="bg-blue-50 text-blue-800" />
+                {/* ROUTES — auto */}
+                <SectionHeader label="🥛 ROUTES (auto)" color="bg-blue-700" section="routes" canAdd={false} />
+                {Object.keys(ledger.routes || {}).sort().map(name => (
+                  <DataRow key={name} section="routes" name={name} isAuto={true} />
+                ))}
+                <TotalRow label="ROUTES TOTAL" section="routes" bg="bg-blue-50" textColor="text-blue-800" />
 
-                {/* BROKERS section */}
-                <tr className="bg-purple-700 text-white">
-                  <td className="sticky left-0 z-10 px-3 py-1.5 text-xs font-bold bg-purple-700 border-r" colSpan={1}>BROKERS</td>
-                  {days.map(d => <td key={d} className="border-r border-purple-600" />)}
-                  <td className="sticky right-0 bg-purple-700 border-l" />
-                </tr>
-                {brokerNames.map(name => <SectionRow key={name} section="brokers" name={name} color="text-purple-700" />)}
-                <TotalRow label="BROKERS TOTAL" section="brokers" bgClass="bg-purple-50 text-purple-800" />
+                {/* BROKERS — manual */}
+                <SectionHeader label="🤝 BROKERS (manual)" color="bg-purple-700" section="brokers" canAdd={true} />
+                {Object.keys(ledger.brokers || {}).sort().map(name => (
+                  <DataRow key={name} section="brokers" name={name} isAuto={false} />
+                ))}
+                <TotalRow label="BROKERS TOTAL" section="brokers" bg="bg-purple-50" textColor="text-purple-800" />
 
-                {/* ISSUES section */}
-                <tr className="bg-red-700 text-white">
-                  <td className="sticky left-0 z-10 px-3 py-1.5 text-xs font-bold bg-red-700 border-r" colSpan={1}>ISSUES (Rejects/Spills)</td>
-                  {days.map(d => <td key={d} className="border-r border-red-600" />)}
-                  <td className="sticky right-0 bg-red-700 border-l" />
-                </tr>
-                {issueNames.map(name => <SectionRow key={name} section="issues" name={name} color="text-red-600" />)}
-                <TotalRow label="ISSUES TOTAL" section="issues" bgClass="bg-red-50 text-red-700" />
+                {/* ISSUES — manual */}
+                <SectionHeader label="⚠️ ISSUES (manual)" color="bg-red-700" section="issues" canAdd={true} />
+                {Object.keys(ledger.issues || {}).sort().map(name => (
+                  <DataRow key={name} section="issues" name={name} isAuto={false} />
+                ))}
+                <TotalRow label="ISSUES TOTAL" section="issues" bg="bg-red-50" textColor="text-red-700" />
 
-                {/* Available to sell */}
-                <SummaryRow label="✅ AVAILABLE TO SELL"
-                  fn={d => getDayTotal('routes', d) + getDayTotal('brokers', d) - getDayTotal('issues', d) + (ledger.balance?.[d-1] || 0)}
-                  bgClass="bg-green-700" textClass="text-white" />
+                {/* AVAILABLE TO SELL */}
+                <ComputedRow label="✅ AVAILABLE TO SELL"
+                  fn={d => (balance[0] || 0) + getSectionDayTotal('routes', d) + getSectionDayTotal('brokers', d) - getSectionDayTotal('issues', d)}
+                  bg="bg-green-700" textColor="text-white" />
 
-                {/* SALES section */}
-                <tr className="bg-orange-600 text-white">
-                  <td className="sticky left-0 z-10 px-3 py-1.5 text-xs font-bold bg-orange-600 border-r" colSpan={1}>SALES</td>
-                  {days.map(d => <td key={d} className="border-r border-orange-500" />)}
-                  <td className="sticky right-0 bg-orange-600 border-l" />
-                </tr>
-                {salesNames.map(name => <SectionRow key={name} section="sales" name={name} color="text-orange-700" />)}
-                <TotalRow label="SALES TOTAL" section="sales" bgClass="bg-orange-50 text-orange-700" />
+                {/* SALES — auto */}
+                <SectionHeader label="🏪 SALES (auto - shop deliveries)" color="bg-orange-600" section="sales" canAdd={false} />
+                {Object.keys(ledger.sales || {}).sort().map(name => (
+                  <DataRow key={name} section="sales" name={name} isAuto={true} />
+                ))}
+                <TotalRow label="SALES TOTAL" section="sales" bg="bg-orange-50" textColor="text-orange-700" />
 
-                {/* Balance */}
-                <SummaryRow label="📦 EXPECTED BALANCE"
-                  fn={d => getDayTotal('routes', d) + getDayTotal('brokers', d) - getDayTotal('issues', d) + (ledger.balance?.[d-1] || 0) - getDayTotal('sales', d)}
-                  bgClass="bg-gray-800" textClass="text-yellow-300" />
+                {/* EXPECTED BALANCE */}
+                <ComputedRow label="📦 EXPECTED BALANCE"
+                  fn={d => {
+                    const prevBal = d === 1 ? (balance[0] || 0) : (summary[d-1]?.closingBalance || 0);
+                    return prevBal + getSectionDayTotal('routes', d) + getSectionDayTotal('brokers', d) - getSectionDayTotal('issues', d) - getSectionDayTotal('sales', d);
+                  }}
+                  bg="bg-gray-800" textColor="text-yellow-300" />
               </tbody>
             </table>
+          </div>
+
+          <div className="px-4 py-2 text-xs text-gray-400 bg-gray-50 border-t flex items-center gap-4">
+            <span>🔵 Routes & Sales = auto-fetched from system</span>
+            <span>🟣 Brokers & Issues = click to edit</span>
+            <span>🟢 Balance updates automatically</span>
+          </div>
+        </div>
+      )}
+
+      {/* Add row modal */}
+      {showAddRow && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-5 w-80 shadow-xl">
+            <h3 className="font-semibold mb-3">Add {showAddRow === 'brokers' ? 'Broker' : 'Issue'} Row</h3>
+            <input value={newRowName} onChange={e => setNewRowName(e.target.value)}
+              placeholder={showAddRow === 'brokers' ? 'e.g. JOHN BROKER' : 'e.g. SPILLED - ROUTE 3'}
+              className="w-full px-3 py-2 border rounded-lg text-sm mb-3" autoFocus
+              onKeyDown={e => e.key === 'Enter' && addRowMut.mutate({ section: showAddRow, name: newRowName.toUpperCase(), month, year })} />
+            <div className="flex gap-2">
+              <button onClick={() => addRowMut.mutate({ section: showAddRow, name: newRowName.toUpperCase(), month, year })}
+                disabled={!newRowName || addRowMut.isPending}
+                className="flex-1 py-2 bg-green-600 text-white rounded-lg text-sm font-medium disabled:opacity-50">
+                Add
+              </button>
+              <button onClick={() => { setShowAddRow(null); setNewRowName(''); }}
+                className="px-4 py-2 border rounded-lg text-sm">
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
     </div>
   );
+
+  function SectionHeader({ label, color, section, canAdd }: { label: string; color: string; section: string; canAdd: boolean }) {
+    return (
+      <tr className={`${color} text-white`}>
+        <td className={`sticky left-0 z-10 px-3 py-1.5 text-xs font-bold ${color} border-r`}>
+          <div className="flex items-center justify-between">
+            <span>{label}</span>
+            {canAdd && (
+              <button onClick={() => setShowAddRow(section)} className="text-white opacity-70 hover:opacity-100 ml-2 p-0.5">
+                <Plus size={12} />
+              </button>
+            )}
+          </div>
+        </td>
+        {days.map(d => <td key={d} className={`border-r border-opacity-20 py-1.5 ${color}`} />)}
+        <td className={`sticky right-0 border-l ${color}`} />
+      </tr>
+    );
+  }
 }

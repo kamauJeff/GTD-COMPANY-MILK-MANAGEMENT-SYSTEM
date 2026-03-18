@@ -18,7 +18,7 @@ export async function getOverview(req: Request, res: Response) {
     prisma.milkCollection.aggregate({ where: { collectedAt: { gte: start, lt: end } }, _sum: { litres: true }, _count: { farmerId: true } }),
     prisma.farmerAdvance.aggregate({ where: { advanceDate: { gte: start, lt: end } }, _sum: { amount: true }, _count: { farmerId: true } }),
     prisma.factoryReceipt.aggregate({ where: { receivedAt: { gte: start, lt: end } }, _sum: { litres: true } }),
-    prisma.shopSale.aggregate({ where: { saleDate: { gte: start, lt: end } }, _sum: { litres: true } }).catch(() => ({ _sum: { litres: 0 } })),
+    prisma.shopSale.aggregate({ where: { saleDate: { gte: start, lt: end } }, _sum: { litresSold: true } }).catch(() => ({ _sum: { litresSold: 0 } })),
     prisma.farmerPayment.findMany({ where: { periodMonth: m, periodYear: y } }),
     prisma.pasteurizationBatch.aggregate({ where: { processedAt: { gte: start, lt: end } }, _sum: { inputLitres: true, outputLitres: true, lossLitres: true } }).catch(() => ({ _sum: { inputLitres: 0, outputLitres: 0, lossLitres: 0 } })),
   ]);
@@ -37,7 +37,7 @@ export async function getOverview(req: Request, res: Response) {
     activeFarmers: collAgg._count.farmerId,
     farmersWithAdvances: advAgg._count.farmerId,
     negativeBalances,
-    shopSales: Number(shopAgg._sum.litres || 0),
+    shopSales: Number(shopAgg._sum.litresSold || 0),
     pasteurized: Number(batchAgg._sum.outputLitres || 0),
     activeShops: 38,
   });
@@ -199,7 +199,7 @@ export async function getFactoryReport(req: Request, res: Response) {
   const [receiptsAgg, batchAgg, delivAgg] = await Promise.all([
     prisma.factoryReceipt.aggregate({ where: { receivedAt: { gte: start, lt: end } }, _sum: { litres: true } }),
     prisma.pasteurizationBatch.aggregate({ where: { processedAt: { gte: start, lt: end } }, _sum: { inputLitres: true, outputLitres: true, lossLitres: true }, _count: { id: true } }).catch(() => ({ _sum: { inputLitres: 0, outputLitres: 0, lossLitres: 0 }, _count: { id: 0 } })),
-    prisma.shopDelivery.aggregate({ where: { deliveredAt: { gte: start, lt: end } }, _sum: { litres: true } }).catch(() => ({ _sum: { litres: 0 } })),
+    prisma.shopSale.aggregate({ where: { saleDate: { gte: start, lt: end } }, _sum: { litresSold: true } }).catch(() => ({ _sum: { litresSold: 0 } })),
   ]);
 
   const input  = Number(batchAgg._sum.inputLitres || 0);
@@ -212,7 +212,7 @@ export async function getFactoryReport(req: Request, res: Response) {
     loss:      Number(batchAgg._sum.lossLitres || 0),
     efficiency,
     batches:   batchAgg._count.id,
-    delivered: Number(delivAgg._sum.litres || 0),
+    delivered: Number(delivAgg._sum.litresSold || 0),
   });
 }
 

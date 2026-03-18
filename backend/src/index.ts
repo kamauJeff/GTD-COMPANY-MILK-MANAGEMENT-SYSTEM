@@ -28,6 +28,7 @@ import reportRoutes from './routes/report.routes';
 import webhookRoutes from './routes/webhook.routes';
 import farmerPortalRoutes from './routes/farmerPortal.routes';
 import aiRoutes from './routes/ai.routes';
+import litresRoutes from './routes/litres.routes';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -70,6 +71,7 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/farmer-portal', farmerPortalRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/factory', litresRoutes);
 
 // ─── Error handler (must be last) ─────────────────────────────────────────────
 app.use(errorHandler);

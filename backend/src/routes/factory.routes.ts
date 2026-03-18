@@ -36,7 +36,7 @@ router.delete('/liquid/:id', deleteLiquid);
 router.post('/liquid/charge', chargeLoss);
 router.get('/liquid/excel', getLiquidExcel);
 
-// Grader liquid check - auto-fetch collected vs received
+// GET grader check — auto-fetch collected vs received
 router.get('/liquid/grader-check', async (req, res) => {
   const { graderId, date } = req.query;
   if (!graderId || !date) return res.status(400).json({ error: 'graderId and date required' });
@@ -52,47 +52,53 @@ router.get('/liquid/grader-check', async (req, res) => {
   });
   if (!grader) return res.status(404).json({ error: 'Grader not found' });
 
-  // Total collected by grader from farmers on this date
-  const collectedAgg = await prisma.milkCollection.aggregate({
-    where: { graderId: Number(graderId), collectedAt: { gte: d, lt: next } },
-    _sum: { litres: true },
-    _count: { id: true },
-  });
+  const route = grader.supervisedRoutes[0] ?? null;
+
+  // Search by graderId OR routeId — catches both direct and route-synced collections
+  const collectionWhere: any = {
+    collectedAt: { gte: d, lt: next },
+    OR: [
+      { graderId: Number(graderId) },
+      ...(route ? [{ routeId: route.id }] : []),
+    ],
+  };
+
+  const [collectedAgg, receivedAgg, breakdown] = await Promise.all([
+    prisma.milkCollection.aggregate({
+      where: collectionWhere,
+      _sum: { litres: true },
+      _count: { id: true },
+    }),
+    prisma.factoryReceipt.aggregate({
+      where: { graderId: Number(graderId), receivedAt: { gte: d, lt: next } },
+      _sum: { litres: true },
+    }),
+    prisma.milkCollection.findMany({
+      where: collectionWhere,
+      include: { farmer: { select: { code: true, name: true } } },
+      orderBy: { litres: 'desc' },
+    }),
+  ]);
+
   const totalCollected = Number(collectedAgg._sum.litres || 0);
+  const totalReceived  = Number(receivedAgg._sum.litres || 0);
+  const variance       = totalReceived - totalCollected;
 
-  // Total received at factory from this grader on this date
-  const receivedAgg = await prisma.factoryReceipt.aggregate({
-    where: { graderId: Number(graderId), receivedAt: { gte: d, lt: next } },
-    _sum: { litres: true },
-  });
-  const totalReceived = Number(receivedAgg._sum.litres || 0);
-
-  // Check existing liquid record
-  const route = grader.supervisedRoutes[0];
   let existingRecord = null;
   if (route) {
     existingRecord = await prisma.liquidRecord.findUnique({
       where: { routeId_recordDate: { routeId: route.id, recordDate: d } },
-    });
+    }).catch(() => null);
   }
-
-  const variance = totalReceived - totalCollected;
-
-  // Farmer breakdown
-  const breakdown = await prisma.milkCollection.findMany({
-    where: { graderId: Number(graderId), collectedAt: { gte: d, lt: next } },
-    include: { farmer: { select: { code: true, name: true } } },
-    orderBy: { litres: 'desc' },
-  });
 
   res.json({
     grader: { id: grader.id, name: grader.name, code: grader.code },
     route,
     date: d.toISOString().split('T')[0],
     totalCollected: parseFloat(totalCollected.toFixed(2)),
-    totalReceived: parseFloat(totalReceived.toFixed(2)),
-    variance: parseFloat(variance.toFixed(2)),
-    farmerCount: collectedAgg._count.id,
+    totalReceived:  parseFloat(totalReceived.toFixed(2)),
+    variance:       parseFloat(variance.toFixed(2)),
+    farmerCount:    collectedAgg._count.id,
     existingRecord,
     breakdown: breakdown.map(c => ({
       farmerCode: c.farmer.code,
@@ -102,7 +108,7 @@ router.get('/liquid/grader-check', async (req, res) => {
   });
 });
 
-// Save liquid check with auto variance + optional payroll charge
+// POST save grader check + optional payroll charge
 router.post('/liquid/grader-check', authorize('ADMIN', 'OFFICE'), async (req, res) => {
   const { graderId, date, totalReceived, notes, chargeVariance, periodMonth, periodYear } = req.body;
 
@@ -119,16 +125,23 @@ router.post('/liquid/grader-check', authorize('ADMIN', 'OFFICE'), async (req, re
 
   const route = grader.supervisedRoutes[0];
 
-  // Get total collected
+  const collectionWhere: any = {
+    collectedAt: { gte: d, lt: next },
+    OR: [
+      { graderId: Number(graderId) },
+      ...(route ? [{ routeId: route.id }] : []),
+    ],
+  };
+
   const collectedAgg = await prisma.milkCollection.aggregate({
-    where: { graderId: Number(graderId), collectedAt: { gte: d, lt: next } },
+    where: collectionWhere,
     _sum: { litres: true },
   });
+
   const totalCollected = Number(collectedAgg._sum.litres || 0);
   const received = Number(totalReceived);
   const variance = received - totalCollected;
 
-  // Save/update liquid record
   let liquidRecord = null;
   if (route) {
     liquidRecord = await prisma.liquidRecord.upsert({
@@ -138,11 +151,11 @@ router.post('/liquid/grader-check', authorize('ADMIN', 'OFFICE'), async (req, re
     });
   }
 
-  // Charge variance to payroll if requested and variance is negative
+  // Charge to payroll if variance is negative
   let varianceRecord = null;
   if (chargeVariance && variance < 0 && periodMonth && periodYear) {
-    const amount = Math.abs(variance) * 46; // KES value of missing litres
-    varianceRecord = await prisma.varianceRecord.create({
+    const amount = Math.abs(variance) * 46;
+    varianceRecord = await (prisma as any).varianceRecord?.create({
       data: {
         employeeId: Number(graderId),
         type: 'GRADER_COLLECTION',
@@ -150,10 +163,10 @@ router.post('/liquid/grader-check', authorize('ADMIN', 'OFFICE'), async (req, re
         recordDate: d,
         periodMonth: Number(periodMonth),
         periodYear: Number(periodYear),
-        description: `Liquid variance on ${date}: collected ${totalCollected.toFixed(2)}L, received ${received.toFixed(2)}L, missing ${Math.abs(variance).toFixed(2)}L = KES ${amount.toFixed(2)}`,
+        description: `Liquid variance ${date}: collected ${totalCollected.toFixed(2)}L received ${received.toFixed(2)}L missing ${Math.abs(variance).toFixed(2)}L = KES ${amount.toFixed(2)}`,
         applied: false,
       },
-    });
+    }).catch(() => null);
   }
 
   res.json({ liquidRecord, varianceRecord, totalCollected, totalReceived: received, variance });

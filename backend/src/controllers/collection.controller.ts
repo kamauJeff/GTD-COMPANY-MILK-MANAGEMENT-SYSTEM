@@ -231,3 +231,66 @@ export async function getJournalGrid(req: Request, res: Response) {
     grandTotal: farmers.reduce((s, f) => s + f.total, 0),
   });
 }
+
+// Excel export of journal grid
+export async function exportJournalExcel(req: Request, res: Response) {
+  const { month, year, routeId } = req.query;
+  const m = Number(month) || new Date().getMonth() + 1;
+  const y = Number(year) || new Date().getFullYear();
+
+  const start = new Date(y, m - 1, 1);
+  const end   = new Date(y, m, 1);
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  const where: any = { collectedAt: { gte: start, lt: end } };
+  if (routeId) where.routeId = Number(routeId);
+
+  const collections = await prisma.milkCollection.findMany({
+    where,
+    include: {
+      farmer: { select: { id: true, code: true, name: true } },
+      route:  { select: { id: true, code: true, name: true } },
+    },
+    orderBy: { collectedAt: 'asc' },
+  });
+
+  const daysInMonth = new Date(y, m, 0).getDate();
+
+  // Build farmer map
+  const farmerMap: Record<number, any> = {};
+  for (const c of collections) {
+    const fid = c.farmerId;
+    const day = new Date(c.collectedAt).getDate();
+    if (!farmerMap[fid]) {
+      farmerMap[fid] = { code: c.farmer.code, name: c.farmer.name, route: c.route?.name ?? '', days: {}, total: 0 };
+    }
+    farmerMap[fid].days[day] = (farmerMap[fid].days[day] || 0) + Number(c.litres);
+    farmerMap[fid].total += Number(c.litres);
+  }
+
+  const farmers = Object.values(farmerMap).sort((a, b) => a.name.localeCompare(b.name));
+
+  // Build CSV (works without extra packages)
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const header = ['Code', 'Farmer Name', 'Route', ...days.map(d => `${d}`), 'TOTAL'];
+  const rows = farmers.map(f => [
+    f.code,
+    f.name,
+    f.route,
+    ...days.map(d => f.days[d] ? Number(f.days[d]).toFixed(1) : '0'),
+    f.total.toFixed(1),
+  ]);
+
+  // Day totals row
+  const dayTotals = days.map(d =>
+    farmers.reduce((s, f) => s + (f.days[d] || 0), 0).toFixed(1)
+  );
+  const grandTotal = farmers.reduce((s, f) => s + f.total, 0).toFixed(1);
+  rows.push(['', 'DAILY TOTAL', '', ...dayTotals, grandTotal]);
+
+  const csv = [header, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename="collections-${MONTHS[m-1]}-${y}.csv"`);
+  res.send(csv);
+}

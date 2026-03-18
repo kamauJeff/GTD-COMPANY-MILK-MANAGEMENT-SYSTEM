@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { collectionsApi, routesApi } from '../api/client';
+import { collectionsApi, routesApi, api } from '../api/client';
 import { Download } from 'lucide-react';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -39,13 +39,17 @@ export default function CollectionsPage() {
 
   const handleExcel = async () => {
     try {
-      const res = await collectionsApi.list({ month, year, routeId: routeId || undefined, format: 'excel' });
-      const url = URL.createObjectURL(new Blob([res.data]));
+      const res = await api.get('/api/collections/export', {
+        params: { month, year, routeId: routeId || undefined },
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }));
       const a = document.createElement('a');
       a.href = url;
-      a.download = `collections-${MONTHS[month-1]}-${year}.xlsx`;
+      a.download = `collections-${MONTHS[month-1]}-${year}.csv`;
       a.click();
-    } catch { alert('Export not available yet'); }
+      URL.revokeObjectURL(url);
+    } catch { alert('Export failed — please try again'); }
   };
 
   return (

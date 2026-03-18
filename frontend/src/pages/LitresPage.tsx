@@ -341,22 +341,4 @@ export default function LitresPage() {
     </div>
   );
 
-  function SectionHeader({ label, color, section, canAdd }: { label: string; color: string; section: string; canAdd: boolean }) {
-    return (
-      <tr className={`${color} text-white`}>
-        <td className={`sticky left-0 z-10 px-3 py-1.5 text-xs font-bold ${color} border-r`}>
-          <div className="flex items-center justify-between">
-            <span>{label}</span>
-            {canAdd && (
-              <button onClick={() => setShowAddRow(section)} className="text-white opacity-70 hover:opacity-100 ml-2 p-0.5">
-                <Plus size={12} />
-              </button>
-            )}
-          </div>
-        </td>
-        {days.map(d => <td key={d} className={`border-r border-opacity-20 py-1.5 ${color}`} />)}
-        <td className={`sticky right-0 border-l ${color}`} />
-      </tr>
-    );
-  }
 }

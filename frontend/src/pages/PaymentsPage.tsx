@@ -1,187 +1,470 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { paymentsApi, routesApi } from '../api/client';
+import { api } from '../api/client';
+import { Download, CheckCircle, DollarSign, AlertTriangle, ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+type Tab = 'compute' | 'records' | 'advances';
 
 export default function PaymentsPage() {
   const now = new Date();
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [year, setYear] = useState(now.getFullYear());
-  const [period, setPeriod] = useState<'mid' | 'end'>('end');
-  const [routeId, setRouteId] = useState('');
-  const [tab, setTab] = useState<'journal' | 'advance' | 'disburse'>('journal');
+  const [month, setMonth]         = useState(now.getMonth() + 1);
+  const [year, setYear]           = useState(now.getFullYear());
+  const [isMidMonth, setIsMidMonth] = useState(now.getDate() <= 15);
+  const [routeId, setRouteId]     = useState('');
+  const [tab, setTab]             = useState<Tab>('compute');
+  const [expandedRoute, setExpandedRoute] = useState<string | null>(null);
+  const [selectedFarmers, setSelectedFarmers] = useState<number[]>([]);
+  const [recordStatus, setRecordStatus] = useState('ALL');
+  const [showAdvanceForm, setShowAdvanceForm] = useState(false);
+  const [advForm, setAdvForm]     = useState({ farmerCode: '', amount: '', notes: '', date: new Date().toISOString().split('T')[0] });
   const qc = useQueryClient();
 
-  const { data: routesData } = useQuery({ queryKey: ['routes'], queryFn: () => routesApi.list() });
+  const { data: routesData } = useQuery({ queryKey: ['routes'], queryFn: () => api.get('/api/payments/routes') });
   const routes: any[] = routesData?.data ?? [];
 
-  const { data: listData, isLoading } = useQuery({
-    queryKey: ['payments', month, year, period, routeId],
-    queryFn: () => paymentsApi.list({ month, year, isMidMonth: period === 'mid', routeId: routeId || undefined }),
+  // Payment preview (compute tab)
+  const { data: previewData, isLoading: previewLoading, refetch: refetchPreview } = useQuery({
+    queryKey: ['payments-preview', month, year, isMidMonth, routeId],
+    queryFn: () => api.get('/api/payments', { params: { month, year, isMidMonth, routeId: routeId || undefined } }),
+    enabled: tab === 'compute',
   });
-  const payments: any[] = listData?.data?.payments ?? listData?.data ?? [];
+  const preview = previewData?.data || {};
+  const routeGroups: any[] = preview.routes || [];
 
-  const approveMutation = useMutation({
-    mutationFn: () => paymentsApi.approve({ periodMonth: month, periodYear: year, isMidMonth: period === 'mid', routeId: routeId || undefined }),
-    onSuccess: () => { alert('Payments approved!'); qc.invalidateQueries({ queryKey: ['payments'] }); },
-    onError: (e: any) => alert(e?.response?.data?.error || 'Failed to approve'),
+  // Payment records (records tab)
+  const { data: recordsData, isLoading: recordsLoading } = useQuery({
+    queryKey: ['payments-records', month, year, isMidMonth, routeId, recordStatus],
+    queryFn: () => api.get('/api/payments', { params: { month, year, isMidMonth, routeId: routeId || undefined, status: recordStatus } }),
+    enabled: tab === 'records',
+  });
+  const records = recordsData?.data || {};
+  const payments: any[] = records.payments || [];
+  const totals = records.totals || {};
+
+  // Advances
+  const { data: advancesData } = useQuery({
+    queryKey: ['advances', month, year, routeId],
+    queryFn: () => api.get('/api/payments/advances', { params: { month, year, routeId: routeId || undefined } }),
+    enabled: tab === 'advances',
+  });
+  const advances: any[] = advancesData?.data ?? [];
+
+  // Summary
+  const { data: summaryData } = useQuery({
+    queryKey: ['payments-summary', month, year],
+    queryFn: () => api.get('/api/payments/summary', { params: { month, year } }),
+  });
+  const summary = summaryData?.data || {};
+
+  const runMut = useMutation({
+    mutationFn: () => api.post('/api/payments/run', { month, year, isMidMonth, routeId: routeId || undefined }),
+    onSuccess: (r) => { alert(`✅ ${r.data.message}`); qc.invalidateQueries({ queryKey: ['payments'] }); },
+    onError: (e: any) => alert(e?.response?.data?.error || 'Failed'),
   });
 
-  const [advForm, setAdvForm] = useState({ farmerCode: '', amount: '', notes: '', date: new Date().toISOString().split('T')[0] });
-  const advanceMutation = useMutation({
-    mutationFn: () => paymentsApi.recordAdvance({ farmerCode: advForm.farmerCode.toUpperCase(), amount: Number(advForm.amount), notes: advForm.notes, date: advForm.date }),
-    onSuccess: () => { alert('Advance recorded!'); setAdvForm(f => ({ ...f, farmerCode: '', amount: '', notes: '' })); },
+  const approveMut = useMutation({
+    mutationFn: (rId?: number) => api.post('/api/payments/approve', { month, year, isMidMonth, routeId: rId || routeId || undefined }),
+    onSuccess: (r) => { alert(`✅ ${r.data.approved} payments approved`); qc.invalidateQueries({ queryKey: ['payments'] }); },
+    onError: (e: any) => alert(e?.response?.data?.error || 'Failed'),
+  });
+
+  const markPaidMut = useMutation({
+    mutationFn: (ids: number[]) => api.post('/api/payments/mark-paid', { paymentIds: ids }),
+    onSuccess: (r) => { alert(`✅ ${r.data.paid} marked as paid`); qc.invalidateQueries({ queryKey: ['payments-records'] }); },
+    onError: (e: any) => alert(e?.response?.data?.error || 'Failed'),
+  });
+
+  const addAdvanceMut = useMutation({
+    mutationFn: () => api.post('/api/payments/advance', advForm),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['advances'] }); setShowAdvanceForm(false); setAdvForm({ farmerCode: '', amount: '', notes: '', date: new Date().toISOString().split('T')[0] }); },
     onError: (e: any) => alert(e?.response?.data?.error || 'Failed to record advance'),
   });
 
-  const pending = payments.filter(p => p.status === 'PENDING').length;
-  const approved = payments.filter(p => p.status === 'APPROVED').length;
-  const paid = payments.filter(p => p.status === 'PAID').length;
-  const totalNet = payments.reduce((s, p) => s + Number(p.netPay || 0), 0);
+  const deleteAdvanceMut = useMutation({
+    mutationFn: (id: number) => api.delete(`/api/payments/advance/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['advances'] }),
+  });
+
+  const downloadFile = async (endpoint: string, filename: string) => {
+    try {
+      const res = await api.get(endpoint, { params: { month, year, isMidMonth, routeId: routeId || undefined }, responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+    } catch { alert('Export failed'); }
+  };
+
+  const toggleFarmer = (id: number) => setSelectedFarmers(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
+  const toggleRoute = (farmers: any[]) => {
+    const ids = farmers.map((f: any) => f.farmer.id);
+    const allSelected = ids.every(id => selectedFarmers.includes(id));
+    setSelectedFarmers(s => allSelected ? s.filter(id => !ids.includes(id)) : [...new Set([...s, ...ids])]);
+  };
+
+  const statusColor = (status: string) => ({
+    PAID: 'bg-green-100 text-green-700',
+    APPROVED: 'bg-blue-100 text-blue-700',
+    PENDING: 'bg-yellow-100 text-yellow-600',
+  }[status] || 'bg-gray-100 text-gray-600');
 
   return (
     <div className="p-6">
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Farmer Payments Journal</h1>
-          <p className="text-sm text-gray-500">{MONTHS[month-1]} {year} · Daily milk · Advances · Net Pay</p>
+          <h1 className="text-2xl font-bold text-gray-800">Farmer Payments</h1>
+          <p className="text-sm text-gray-500">{isMidMonth ? 'Mid Month (1–15)' : 'End Month (1–last day)'} · {MONTHS[month-1]} {year}</p>
         </div>
-        <div className="flex gap-2 items-center flex-wrap">
+        <div className="flex gap-2 flex-wrap">
           <select value={month} onChange={e => setMonth(Number(e.target.value))} className="px-3 py-2 border rounded-lg text-sm">
             {MONTHS.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
           </select>
           <select value={year} onChange={e => setYear(Number(e.target.value))} className="px-3 py-2 border rounded-lg text-sm">
             {[2024,2025,2026].map(y => <option key={y}>{y}</option>)}
           </select>
-          <div className="flex border rounded-lg overflow-hidden">
-            <button onClick={() => setPeriod('mid')} className={`px-3 py-2 text-sm ${period === 'mid' ? 'bg-green-600 text-white' : 'bg-white hover:bg-gray-50'}`}>Mid Month (15th)</button>
-            <button onClick={() => setPeriod('end')} className={`px-3 py-2 text-sm ${period === 'end' ? 'bg-green-600 text-white' : 'bg-white hover:bg-gray-50'}`}>End Month</button>
-          </div>
-          <select value={routeId} onChange={e => setRouteId(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
+          <select value={routeId} onChange={e => setRouteId(e.target.value)} className="px-3 py-2 border rounded-lg text-sm min-w-[160px]">
             <option value="">All Routes</option>
             {routes.map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
           </select>
+          <div className="flex border border-gray-300 rounded-lg overflow-hidden">
+            <button onClick={() => setIsMidMonth(true)} className={`px-3 py-2 text-sm font-medium ${isMidMonth ? 'bg-purple-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+              Mid Month
+            </button>
+            <button onClick={() => setIsMidMonth(false)} className={`px-3 py-2 text-sm font-medium border-l ${!isMidMonth ? 'bg-green-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+              End Month
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-xl border p-4 shadow-sm"><div className="text-xs text-gray-400 mb-1">Farmers</div><div className="text-2xl font-bold">{payments.length}</div></div>
-        <div className="bg-yellow-50 rounded-xl border border-yellow-200 p-4"><div className="text-xs text-yellow-600 mb-1">Pending</div><div className="text-2xl font-bold text-yellow-700">{pending}</div></div>
-        <div className="bg-blue-50 rounded-xl border border-blue-200 p-4"><div className="text-xs text-blue-600 mb-1">Approved</div><div className="text-2xl font-bold text-blue-700">{approved}</div></div>
-        <div className="bg-green-50 rounded-xl border border-green-200 p-4"><div className="text-xs text-green-600 mb-1">Total Net Pay</div><div className="text-lg font-bold text-green-700">KES {totalNet.toLocaleString()}</div></div>
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        {[
+          { label: 'Mid Month Paid', value: `${summary.mid?.paid || 0} / ${summary.mid?.count || 0}`, sub: `KES ${Number(summary.mid?.totalNet || 0).toLocaleString()}`, color: 'text-purple-700', bg: 'bg-purple-50 border-purple-200' },
+          { label: 'End Month Paid', value: `${summary.end?.paid || 0} / ${summary.end?.count || 0}`, sub: `KES ${Number(summary.end?.totalNet || 0).toLocaleString()}`, color: 'text-green-700', bg: 'bg-green-50 border-green-200' },
+          { label: 'Advances This Month', value: summary.advances?.count || 0, sub: `KES ${Number(summary.advances?.total || 0).toLocaleString()}`, color: 'text-orange-700', bg: 'bg-orange-50 border-orange-200' },
+          { label: 'Negative Balances', value: `${(summary.mid?.negative || 0) + (summary.end?.negative || 0)}`, sub: 'Carried forward', color: 'text-red-600', bg: 'bg-red-50 border-red-200' },
+        ].map(s => (
+          <div key={s.label} className={`rounded-xl border p-3 ${s.bg}`}>
+            <div className="text-xs text-gray-400 mb-1">{s.label}</div>
+            <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
+            <div className="text-xs text-gray-400 mt-1">{s.sub}</div>
+          </div>
+        ))}
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-4">
-        {(['journal','advance','disburse'] as const).map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium capitalize ${tab === t ? 'bg-green-600 text-white' : 'border border-gray-300 hover:bg-gray-50'}`}>
-            {t === 'journal' ? '📋 Journal' : t === 'advance' ? '💳 Record Advance' : '🚀 Disburse'}
+      <div className="flex gap-2 mb-5">
+        {[['compute','💰 Compute & Approve'],['records','📋 Payment Records'],['advances','📝 Advances']].map(([t, l]) => (
+          <button key={t} onClick={() => setTab(t as Tab)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === t ? 'bg-green-600 text-white' : 'border border-gray-300 hover:bg-gray-50'}`}>
+            {l}
           </button>
         ))}
-        {(pending > 0 || approved > 0) && (
-          <button onClick={() => approveMutation.mutate()} disabled={approveMutation.isPending}
-            className="ml-auto px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
-            {approveMutation.isPending ? 'Approving...' : `✅ Approve ${pending} Pending`}
-          </button>
-        )}
       </div>
 
-      {tab === 'journal' && (
-        <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+      {/* ── COMPUTE TAB ── */}
+      {tab === 'compute' && (
+        <div className="space-y-4">
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={() => runMut.mutate()} disabled={runMut.isPending}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+              {runMut.isPending ? 'Computing...' : '⚙️ Generate Payment Records'}
+            </button>
+            {selectedFarmers.length > 0 && (
+              <button onClick={() => approveMut.mutate(undefined)} disabled={approveMut.isPending}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
+                ✅ Approve Selected ({selectedFarmers.length})
+              </button>
+            )}
+            <button onClick={() => downloadFile('/api/payments/kopokopo-export', `kopokopo-${isMidMonth?'mid':'end'}-${MONTHS[month-1]}-${year}.csv`)}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2">
+              <Download size={14} /> KopoKopo Export
+            </button>
+            <button onClick={() => downloadFile('/api/payments/bank-export', `bank-${isMidMonth?'mid':'end'}-${MONTHS[month-1]}-${year}.csv`)}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2">
+              <Download size={14} /> Bank Export
+            </button>
+          </div>
+
+          {previewLoading ? (
+            <div className="bg-white rounded-xl border p-12 text-center text-gray-400">Computing payments...</div>
+          ) : routeGroups.length === 0 ? (
+            <div className="bg-white rounded-xl border p-12 text-center text-gray-400">
+              <div className="text-3xl mb-3">💰</div>
+              <div className="font-medium">No payment data yet</div>
+              <div className="text-sm mt-1">Click "Generate Payment Records" to compute from collections</div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {routeGroups.map((rg: any) => {
+                const isExpanded = expandedRoute === rg.routeCode;
+                const routeFarmers: any[] = rg.farmers || [];
+                const allRouteSelected = routeFarmers.every((f: any) => selectedFarmers.includes(f.farmer.id));
+                return (
+                  <div key={rg.routeCode} className="bg-white rounded-xl border shadow-sm overflow-hidden">
+                    {/* Route header */}
+                    <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b cursor-pointer"
+                      onClick={() => setExpandedRoute(isExpanded ? null : rg.routeCode)}>
+                      <div className="flex items-center gap-3">
+                        <input type="checkbox" checked={allRouteSelected} onChange={() => toggleRoute(routeFarmers)}
+                          onClick={e => e.stopPropagation()} className="w-4 h-4 accent-green-600" />
+                        {isExpanded ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronRight size={16} className="text-gray-400" />}
+                        <div>
+                          <span className="font-semibold text-gray-800">{rg.routeName}</span>
+                          <span className="text-xs text-gray-400 ml-2">{routeFarmers.length} farmers</span>
+                          {rg.negativeCount > 0 && <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-600 text-xs rounded-full">{rg.negativeCount} negative</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4 text-sm">
+                        <span className="text-gray-500">{rg.totalLitres.toFixed(0)} L</span>
+                        <span className="text-green-700 font-bold">KES {rg.totalNet.toLocaleString(undefined, {maximumFractionDigits:0})}</span>
+                        <button onClick={e => { e.stopPropagation(); approveMut.mutate(rg.routeId); }}
+                          className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700">
+                          Approve Route
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Farmers table */}
+                    {isExpanded && (
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 border-b">
+                          <tr>
+                            {['','Code','Farmer','Payment','Account','Litres','Gross','Advances','B/F','Net Pay','Status'].map(h => (
+                              <th key={h} className="text-left px-3 py-2 text-xs text-gray-500 font-medium whitespace-nowrap">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {routeFarmers.map((f: any) => {
+                            const isSelected = selectedFarmers.includes(f.farmer.id);
+                            const isNeg = f.netPay < 0;
+                            return (
+                              <tr key={f.farmer.id} className={`border-b last:border-0 ${isNeg ? 'bg-red-50' : isSelected ? 'bg-green-50' : 'hover:bg-gray-50'}`}>
+                                <td className="px-3 py-2.5">
+                                  <input type="checkbox" checked={isSelected} onChange={() => toggleFarmer(f.farmer.id)} className="w-3.5 h-3.5 accent-green-600" />
+                                </td>
+                                <td className="px-3 py-2.5 font-mono text-xs text-gray-400">{f.farmer.code}</td>
+                                <td className="px-3 py-2.5 font-medium text-gray-800">{f.farmer.name}</td>
+                                <td className="px-3 py-2.5">
+                                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${f.farmer.paymentMethod === 'MPESA' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                                    {f.farmer.paymentMethod === 'MPESA' ? '📱 M-Pesa' : '🏦 Bank'}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2.5 text-xs font-mono text-gray-500">
+                                  {f.farmer.paymentMethod === 'MPESA' ? f.farmer.mpesaPhone || f.farmer.phone : `${f.farmer.bankName || ''} ${f.farmer.bankAccount || ''}`}
+                                </td>
+                                <td className="px-3 py-2.5 font-mono">{f.totalLitres.toFixed(1)} L</td>
+                                <td className="px-3 py-2.5 font-mono">KES {f.grossPay.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+                                <td className="px-3 py-2.5 font-mono text-orange-600">KES {f.totalAdvances.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+                                <td className="px-3 py-2.5 font-mono text-red-500">{f.carriedForward > 0 ? `KES ${f.carriedForward.toLocaleString(undefined,{maximumFractionDigits:0})}` : '–'}</td>
+                                <td className={`px-3 py-2.5 font-bold font-mono ${isNeg ? 'text-red-600' : 'text-green-700'}`}>
+                                  KES {f.netPay.toLocaleString(undefined,{maximumFractionDigits:0})}
+                                </td>
+                                <td className="px-3 py-2.5">
+                                  {isNeg ? (
+                                    <span className="flex items-center gap-1 text-xs text-red-600 font-medium"><AlertTriangle size={12} /> Negative</span>
+                                  ) : (
+                                    <span className="flex items-center gap-1 text-xs text-green-600"><CheckCircle size={12} /> Payable</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot className="bg-gray-50 border-t">
+                          <tr>
+                            <td colSpan={5} className="px-3 py-2 text-xs font-bold text-gray-600">ROUTE TOTAL</td>
+                            <td className="px-3 py-2 font-bold font-mono text-xs">{rg.totalLitres.toFixed(0)} L</td>
+                            <td className="px-3 py-2 font-bold font-mono text-xs">KES {rg.totalGross.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+                            <td className="px-3 py-2 font-bold font-mono text-xs text-orange-600">KES {rg.totalAdvances.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+                            <td className="px-3 py-2"></td>
+                            <td className="px-3 py-2 font-bold font-mono text-xs text-green-700">KES {rg.totalNet.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+                            <td className="px-3 py-2"></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── RECORDS TAB ── */}
+      {tab === 'records' && (
+        <div className="space-y-4">
+          <div className="flex gap-2 flex-wrap items-center">
+            <div className="flex border border-gray-300 rounded-lg overflow-hidden text-sm">
+              {[['ALL','All'],['PENDING','Pending'],['APPROVED','Approved'],['PAID','Paid']].map(([v, l]) => (
+                <button key={v} onClick={() => setRecordStatus(v)}
+                  className={`px-3 py-2 font-medium ${recordStatus === v ? 'bg-green-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'} border-r last:border-0`}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => downloadFile('/api/payments/kopokopo-export', `kopokopo-${MONTHS[month-1]}-${year}.csv`)}
+              className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2 hover:bg-gray-50">
+              <Download size={14} /> KopoKopo CSV
+            </button>
+            <button onClick={() => downloadFile('/api/payments/bank-export', `bank-${MONTHS[month-1]}-${year}.csv`)}
+              className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2 hover:bg-gray-50">
+              <Download size={14} /> Bank CSV
+            </button>
+          </div>
+
+          {/* Summary */}
+          {totals.count > 0 && (
+            <div className="grid grid-cols-4 gap-3">
+              {[
+                { label: 'Total Farmers', value: totals.count, color: 'text-gray-800' },
+                { label: 'Total Net', value: `KES ${Number(totals.totalNet||0).toLocaleString(undefined,{maximumFractionDigits:0})}`, color: 'text-green-700' },
+                { label: 'Paid', value: totals.paid, color: 'text-green-700' },
+                { label: 'Negative', value: totals.negative, color: 'text-red-600' },
+              ].map(s => (
+                <div key={s.label} className="bg-white rounded-xl border p-3 shadow-sm">
+                  <div className="text-xs text-gray-400">{s.label}</div>
+                  <div className={`text-lg font-bold ${s.color}`}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+            {recordsLoading ? (
+              <div className="text-center py-12 text-gray-400">Loading...</div>
+            ) : payments.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">No payment records found. Generate them in the Compute tab first.</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>{['Code','Farmer','Route','Method','Account','Litres','Gross','Advances','Net Pay','Status','Action'].map(h => (
+                    <th key={h} className="text-left px-3 py-3 text-xs text-gray-500 font-medium whitespace-nowrap">{h}</th>
+                  ))}</tr>
+                </thead>
+                <tbody>
+                  {payments.map((p: any) => {
+                    const f = p.farmer;
+                    const isNeg = Number(p.netPay) < 0;
+                    return (
+                      <tr key={p.id} className={`border-b last:border-0 ${isNeg ? 'bg-red-50' : 'hover:bg-gray-50'}`}>
+                        <td className="px-3 py-2.5 font-mono text-xs text-gray-400">{f.code}</td>
+                        <td className="px-3 py-2.5 font-medium">{f.name}</td>
+                        <td className="px-3 py-2.5 text-xs text-gray-500">{f.route?.name}</td>
+                        <td className="px-3 py-2.5">
+                          <span className={`px-2 py-0.5 rounded-full text-xs ${f.paymentMethod === 'MPESA' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {f.paymentMethod === 'MPESA' ? '📱 M-Pesa' : '🏦 Bank'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 font-mono text-xs text-gray-500">
+                          {f.paymentMethod === 'MPESA' ? f.mpesaPhone || f.phone : f.bankAccount || '–'}
+                        </td>
+                        <td className="px-3 py-2.5 font-mono text-xs">{Number(p.grossPay/46).toFixed(0)} L</td>
+                        <td className="px-3 py-2.5 font-mono text-xs">KES {Number(p.grossPay).toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+                        <td className="px-3 py-2.5 font-mono text-xs text-orange-600">KES {Number(p.totalAdvances).toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+                        <td className={`px-3 py-2.5 font-bold font-mono text-xs ${isNeg ? 'text-red-600' : 'text-green-700'}`}>
+                          KES {Number(p.netPay).toLocaleString(undefined,{maximumFractionDigits:0})}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColor(p.status)}`}>{p.status}</span>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          {p.status === 'APPROVED' && !isNeg && (
+                            <button onClick={() => markPaidMut.mutate([p.id])}
+                              className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700">
+                              Mark Paid
+                            </button>
+                          )}
+                          {p.status === 'PAID' && p.paidAt && (
+                            <span className="text-xs text-gray-400">{new Date(p.paidAt).toLocaleDateString('en-KE')}</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── ADVANCES TAB ── */}
+      {tab === 'advances' && (
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <div className="text-sm text-gray-500">{advances.length} advances · KES {advances.reduce((s: number, a: any) => s + Number(a.amount), 0).toLocaleString()} total</div>
+            <button onClick={() => setShowAdvanceForm(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">
+              <Plus size={14} /> Record Advance
+            </button>
+          </div>
+
+          {showAdvanceForm && (
+            <div className="bg-white rounded-xl border shadow-sm p-5">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-semibold text-gray-800">Record Advance</h3>
+                <button onClick={() => setShowAdvanceForm(false)}><X size={18} className="text-gray-400" /></button>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Farmer Code *</label>
+                  <input value={advForm.farmerCode} onChange={e => setAdvForm(f => ({...f, farmerCode: e.target.value.toUpperCase()}))}
+                    placeholder="e.g. FM0001" className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Amount (KES) *</label>
+                  <input type="number" value={advForm.amount} onChange={e => setAdvForm(f => ({...f, amount: e.target.value}))}
+                    placeholder="0" className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Date</label>
+                  <input type="date" value={advForm.date} onChange={e => setAdvForm(f => ({...f, date: e.target.value}))}
+                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Notes</label>
+                  <input value={advForm.notes} onChange={e => setAdvForm(f => ({...f, notes: e.target.value}))}
+                    placeholder="Optional..." className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+              </div>
+              <button onClick={() => addAdvanceMut.mutate()} disabled={!advForm.farmerCode || !advForm.amount || addAdvanceMut.isPending}
+                className="mt-3 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
+                {addAdvanceMut.isPending ? 'Saving...' : 'Record Advance'}
+              </button>
+            </div>
+          )}
+
+          <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
-                <tr>
-                  {['Farmer Code','Name','Route','Gross Pay','Advances','Deductions','Net Pay','Status','Paid At'].map(h => (
-                    <th key={h} className="text-left px-3 py-3 text-xs text-gray-500 font-medium whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
+                <tr>{['Date','Code','Farmer','Route','Amount','Notes',''].map(h => (
+                  <th key={h} className="text-left px-3 py-3 text-xs text-gray-500 font-medium">{h}</th>
+                ))}</tr>
               </thead>
               <tbody>
-                {isLoading ? (
-                  <tr><td colSpan={9} className="text-center py-12 text-gray-400">Loading...</td></tr>
-                ) : payments.length === 0 ? (
-                  <tr><td colSpan={9} className="text-center py-12 text-gray-400">No payment records found for this period.</td></tr>
-                ) : payments.map((p: any) => (
-                  <tr key={p.id} className="border-b hover:bg-gray-50">
-                    <td className="px-3 py-2.5 font-mono text-xs">{p.farmer?.code}</td>
-                    <td className="px-3 py-2.5 font-medium">{p.farmer?.name}</td>
-                    <td className="px-3 py-2.5 text-xs text-gray-500">{p.farmer?.route?.name}</td>
-                    <td className="px-3 py-2.5 font-mono">KES {Number(p.grossPay).toLocaleString()}</td>
-                    <td className="px-3 py-2.5 font-mono text-red-600">{Number(p.totalAdvances) > 0 ? `- ${Number(p.totalAdvances).toLocaleString()}` : '–'}</td>
-                    <td className="px-3 py-2.5 font-mono text-red-600">{Number(p.totalDeductions) > 0 ? `- ${Number(p.totalDeductions).toLocaleString()}` : '–'}</td>
-                    <td className={`px-3 py-2.5 font-bold font-mono ${Number(p.netPay) < 0 ? 'text-red-600' : 'text-green-700'}`}>KES {Number(p.netPay).toLocaleString()}</td>
+                {advances.length === 0 ? (
+                  <tr><td colSpan={7} className="text-center py-12 text-gray-400">No advances recorded for {MONTHS[month-1]} {year}</td></tr>
+                ) : advances.map((a: any) => (
+                  <tr key={a.id} className="border-b last:border-0 hover:bg-gray-50">
+                    <td className="px-3 py-2.5 text-xs text-gray-500">{new Date(a.advanceDate).toLocaleDateString('en-KE')}</td>
+                    <td className="px-3 py-2.5 font-mono text-xs text-gray-400">{a.farmer.code}</td>
+                    <td className="px-3 py-2.5 font-medium">{a.farmer.name}</td>
+                    <td className="px-3 py-2.5 text-xs text-gray-500">{a.farmer.route?.name || '–'}</td>
+                    <td className="px-3 py-2.5 font-bold text-orange-600">KES {Number(a.amount).toLocaleString()}</td>
+                    <td className="px-3 py-2.5 text-xs text-gray-400">{a.notes || '–'}</td>
                     <td className="px-3 py-2.5">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.status === 'PAID' ? 'bg-green-100 text-green-700' : p.status === 'APPROVED' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                        {p.status}
-                      </span>
+                      <button onClick={() => deleteAdvanceMut.mutate(a.id)} className="text-red-400 hover:text-red-600 text-xs">✕</button>
                     </td>
-                    <td className="px-3 py-2.5 text-xs text-gray-400">{p.paidAt ? new Date(p.paidAt).toLocaleDateString('en-KE') : '–'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
-      )}
-
-      {tab === 'advance' && (
-        <div className="bg-white rounded-xl border p-6 shadow-sm max-w-md">
-          <h3 className="font-semibold text-gray-800 mb-4">Record Farmer Advance</h3>
-          <div className="space-y-3">
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Farmer Code *</label>
-              <input value={advForm.farmerCode} onChange={e => setAdvForm(f => ({...f, farmerCode: e.target.value.toUpperCase()}))}
-                placeholder="e.g. FM0668" className="w-full px-3 py-2 border rounded-lg text-sm font-mono" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Amount (KES) *</label>
-                <input type="number" value={advForm.amount} onChange={e => setAdvForm(f => ({...f, amount: e.target.value}))}
-                  placeholder="0" className="w-full px-3 py-2 border rounded-lg text-sm" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Date</label>
-                <input type="date" value={advForm.date} onChange={e => setAdvForm(f => ({...f, date: e.target.value}))}
-                  className="w-full px-3 py-2 border rounded-lg text-sm" />
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Notes</label>
-              <input value={advForm.notes} onChange={e => setAdvForm(f => ({...f, notes: e.target.value}))}
-                placeholder="Optional note..." className="w-full px-3 py-2 border rounded-lg text-sm" />
-            </div>
-            <button onClick={() => advanceMutation.mutate()} disabled={advanceMutation.isPending}
-              className="w-full py-2.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
-              {advanceMutation.isPending ? 'Recording...' : 'Record Advance'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {tab === 'disburse' && (
-        <div className="bg-white rounded-xl border p-6 shadow-sm">
-          <h3 className="font-semibold text-gray-800 mb-2">KopoKopo Disbursement</h3>
-          <p className="text-sm text-gray-500 mb-4">Disburse payments to {approved} approved farmers via M-Pesa bulk payment.</p>
-          {approved === 0 ? (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-800">
-              No approved payments yet. First approve payments using the button above, then come back to disburse.
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <div className="text-sm font-medium text-green-800">{approved} farmers ready for disbursement</div>
-                <div className="text-lg font-bold text-green-700 mt-1">KES {payments.filter(p => p.status === 'APPROVED').reduce((s, p) => s + Number(p.netPay), 0).toLocaleString()}</div>
-              </div>
-              <button className="px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700">
-                🚀 Send via KopoKopo M-Pesa
-              </button>
-              <p className="text-xs text-gray-400">All phone numbers must be in 254XXXXXXXXX format. Go to Farmers page and click "Fix Phones to 254" first.</p>
-            </div>
-          )}
         </div>
       )}
     </div>

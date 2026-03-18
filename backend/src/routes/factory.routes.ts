@@ -110,6 +110,7 @@ router.get('/liquid/grader-check', async (req, res) => {
 
 // POST save grader check + optional payroll charge
 router.post('/liquid/grader-check', authorize('ADMIN', 'OFFICE'), async (req, res) => {
+  try {
   const { graderId, date, totalReceived, notes, chargeVariance, periodMonth, periodYear } = req.body;
 
   const d = new Date(String(date));
@@ -144,32 +145,44 @@ router.post('/liquid/grader-check', authorize('ADMIN', 'OFFICE'), async (req, re
 
   let liquidRecord = null;
   if (route) {
-    liquidRecord = await prisma.liquidRecord.upsert({
-      where: { routeId_recordDate: { routeId: route.id, recordDate: d } },
-      update: { graderId: Number(graderId), received, dispatched: totalCollected, variance, notes },
-      create: { routeId: route.id, graderId: Number(graderId), recordDate: d, received, dispatched: totalCollected, variance, notes },
-    });
+    try {
+      liquidRecord = await prisma.liquidRecord.upsert({
+        where: { routeId_recordDate: { routeId: route.id, recordDate: d } },
+        update: { graderId: Number(graderId), received, dispatched: totalCollected, variance, notes: notes || null },
+        create: { routeId: route.id, graderId: Number(graderId), recordDate: d, received, dispatched: totalCollected, variance, notes: notes || null },
+      });
+    } catch (e) {
+      console.error('LiquidRecord upsert failed:', e);
+    }
   }
 
   // Charge to payroll if variance is negative
   let varianceRecord = null;
   if (chargeVariance && variance < 0 && periodMonth && periodYear) {
     const amount = Math.abs(variance) * 46;
-    varianceRecord = await (prisma as any).varianceRecord?.create({
-      data: {
-        employeeId: Number(graderId),
-        type: 'GRADER_COLLECTION',
-        amount,
-        recordDate: d,
-        periodMonth: Number(periodMonth),
-        periodYear: Number(periodYear),
-        description: `Liquid variance ${date}: collected ${totalCollected.toFixed(2)}L received ${received.toFixed(2)}L missing ${Math.abs(variance).toFixed(2)}L = KES ${amount.toFixed(2)}`,
-        applied: false,
-      },
-    }).catch(() => null);
+    try {
+      varianceRecord = await prisma.varianceRecord.create({
+        data: {
+          employeeId:  Number(graderId),
+          type:        'GRADER_COLLECTION',
+          amount,
+          recordDate:  d,
+          periodMonth: Number(periodMonth),
+          periodYear:  Number(periodYear),
+          description: `Liquid variance ${date}: collected ${totalCollected.toFixed(2)}L received ${received.toFixed(2)}L missing ${Math.abs(variance).toFixed(2)}L = KES ${amount.toFixed(2)}`,
+          applied:     false,
+        },
+      });
+    } catch (e) {
+      console.error('VarianceRecord create failed:', e);
+    }
   }
 
   res.json({ liquidRecord, varianceRecord, totalCollected, totalReceived: received, variance });
+  } catch (e: any) {
+    console.error('Liquid check save error:', e);
+    res.status(500).json({ error: e?.message || 'Failed to save liquid check' });
+  }
 });
 
 export default router;

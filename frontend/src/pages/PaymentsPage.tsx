@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
-import { Download, CheckCircle, DollarSign, AlertTriangle, ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
+import { Download, CheckCircle, AlertTriangle, ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 type Tab = 'compute' | 'records' | 'advances';
@@ -10,7 +10,7 @@ export default function PaymentsPage() {
   const now = new Date();
   const [month, setMonth]         = useState(now.getMonth() + 1);
   const [year, setYear]           = useState(now.getFullYear());
-  const [isMidMonth, setIsMidMonth] = useState(now.getDate() <= 15);
+  const [isMidMonth, setIsMidMonth] = useState(false);
   const [routeId, setRouteId]     = useState('');
   const [tab, setTab]             = useState<Tab>('compute');
   const [expandedRoute, setExpandedRoute] = useState<string | null>(null);
@@ -97,7 +97,8 @@ export default function PaymentsPage() {
 
   const toggleFarmer = (id: number) => setSelectedFarmers(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
   const toggleRoute = (farmers: any[]) => {
-    const ids = farmers.map((f: any) => f.farmer.id);
+    if (!farmers?.length) return;
+    const ids = farmers.map((f: any) => f.farmer?.id).filter(Boolean);
     const allSelected = ids.every(id => selectedFarmers.includes(id));
     setSelectedFarmers(s => allSelected ? s.filter(id => !ids.includes(id)) : [...new Set([...s, ...ids])]);
   };

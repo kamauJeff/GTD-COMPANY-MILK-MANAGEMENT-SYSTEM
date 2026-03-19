@@ -68,6 +68,8 @@ export default function PaymentsPage() {
     refetchInterval: 300000, // refresh every 5 min
   });
   const kopoBalance = balanceData?.data;
+
+  const { data: summaryData } = useQuery({
     queryKey: ['payments-summary', month, year],
     queryFn: () => api.get('/api/payments/summary', { params: { month, year } }),
   });

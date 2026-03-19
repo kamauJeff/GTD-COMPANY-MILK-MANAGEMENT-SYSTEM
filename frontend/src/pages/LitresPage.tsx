@@ -238,9 +238,9 @@ export default function LitresPage() {
         <div className="bg-white rounded-xl border p-16 text-center text-gray-400">Loading ledger...</div>
       ) : (
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" style={{ maxHeight: 'calc(100vh - 360px)', overflowY: 'auto' }}>
             <table className="text-xs border-collapse" style={{ minWidth: `${190 + daysInMonth * 54 + 60}px` }}>
-              <thead>
+              <thead className="sticky top-0 z-30">
                 <tr className="bg-gray-800 text-white">
                   <th className="sticky left-0 bg-gray-800 z-20 px-3 py-2.5 text-left min-w-[190px]">ROUTE / SOURCE</th>
                   {days.map(d => (

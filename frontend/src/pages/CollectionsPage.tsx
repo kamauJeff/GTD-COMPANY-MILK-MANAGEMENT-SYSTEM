@@ -7,69 +7,72 @@ const MONTHS = ['January','February','March','April','May','June','July','August
 
 export default function CollectionsPage() {
   const now = new Date();
-  const [month, setMonth]       = useState(now.getMonth() + 1);
-  const [year, setYear]         = useState(now.getFullYear());
-  const [routeId, setRouteId]   = useState('');
-  const [search, setSearch]     = useState('');
+  const [month, setMonth]     = useState(now.getMonth() + 1);
+  const [year, setYear]       = useState(now.getFullYear());
+  const [routeId, setRouteId] = useState('');
+  const [search, setSearch]   = useState('');
 
   const { data: routesData } = useQuery({ queryKey: ['routes'], queryFn: () => routesApi.list() });
   const routes: any[] = routesData?.data ?? [];
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['journal-grid', month, year, routeId],
-    queryFn: () => collectionsApi.list({ month, year, routeId: routeId || undefined }),
-    // Use journal endpoint
-  });
-
-  const { data: gridData, isLoading: gridLoading } = useQuery({
+  const { data: gridData, isLoading } = useQuery({
     queryKey: ['collection-journal', month, year, routeId],
     queryFn: () => collectionsApi.journal({ month, year, routeId: routeId || undefined }),
   });
 
-  const grid = gridData?.data;
-  const farmers: any[] = grid?.farmers ?? [];
-  const dayTotals: Record<number, number> = grid?.dayTotals ?? {};
-  const daysInMonth: number = grid?.daysInMonth ?? new Date(year, month, 0).getDate();
-  const grandTotal: number = grid?.grandTotal ?? 0;
+  const grid        = gridData?.data;
+  const farmers: any[]              = grid?.farmers ?? [];
+  const dayTotals: Record<number,number> = grid?.dayTotals ?? {};
+  const daysInMonth: number         = grid?.daysInMonth ?? new Date(year, month, 0).getDate();
+  const grandTotal: number          = grid?.grandTotal ?? 0;
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const midDays  = days.filter(d => d <= 15);
+  const endDays  = days.filter(d => d > 15);
 
   const filtered = search
     ? farmers.filter(f => f.name.toLowerCase().includes(search.toLowerCase()) || f.code.toLowerCase().includes(search.toLowerCase()))
     : farmers;
 
-  const handleExcel = async () => {
+  // Per-farmer computations matching Excel structure
+  const getTotal15 = (f: any) => midDays.reduce((s, d) => s + (f.days[d] || 0), 0);
+  const getTotalLitres = (f: any) => days.reduce((s, d) => s + (f.days[d] || 0), 0);
+  const getTotalMoney = (f: any, pricePerLitre = 46) => getTotalLitres(f) * pricePerLitre;
+
+  const handleExport = async () => {
     try {
       const res = await api.get('/api/collections/export', {
         params: { month, year, routeId: routeId || undefined },
         responseType: 'blob',
       });
       const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `collections-${MONTHS[month-1]}-${year}.csv`;
-      a.click();
+      const a = document.createElement('a'); a.href = url;
+      a.download = `collections-${MONTHS[month-1]}-${year}.csv`; a.click();
       URL.revokeObjectURL(url);
-    } catch { alert('Export failed — please try again'); }
+    } catch { alert('Export failed'); }
   };
 
+  // Day column total
+  const getDayTotal = (day: number) => filtered.reduce((s, f) => s + (f.days[day] || 0), 0);
+  const getMid15Total = () => filtered.reduce((s, f) => s + getTotal15(f), 0);
+  const getGrandTotal = () => filtered.reduce((s, f) => s + getTotalLitres(f), 0);
+  const getGrandMoney = () => filtered.reduce((s, f) => s + getTotalMoney(f), 0);
+
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Milk Collections</h1>
-          <p className="text-sm text-gray-500">
-            {MONTHS[month-1]} {year} · {farmers.length} farmers · {grandTotal.toFixed(1)} L total
-          </p>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-800">Milk Collections Journal</h1>
+          <p className="text-sm text-gray-500">{MONTHS[month-1]} {year} · {filtered.length} farmers · {getGrandTotal().toFixed(1)} L</p>
         </div>
-        <button onClick={handleExcel}
-          className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
-          <Download size={14} /> Export Excel
+        <button onClick={handleExport}
+          className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
+          <Download size={14} /> Export CSV
         </button>
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3 mb-4 flex-wrap">
+      <div className="flex flex-wrap gap-2 mb-4">
         <select value={month} onChange={e => setMonth(Number(e.target.value))}
           className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
           {MONTHS.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
@@ -79,109 +82,131 @@ export default function CollectionsPage() {
           {[2024,2025,2026].map(y => <option key={y}>{y}</option>)}
         </select>
         <select value={routeId} onChange={e => setRouteId(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm min-w-[180px]">
+          className="px-3 py-2 border border-gray-300 rounded-lg text-sm min-w-[160px]">
           <option value="">All Routes</option>
           {routes.map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
         </select>
         <input value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Search farmer..."
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-48" />
+          className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-44" />
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <div className="bg-white rounded-xl border p-3 shadow-sm">
-          <div className="text-xs text-gray-400 mb-1">Farmers</div>
-          <div className="text-xl font-bold text-gray-800">{farmers.length}</div>
+          <div className="text-xs text-gray-400">Farmers</div>
+          <div className="text-xl font-bold text-gray-800">{filtered.length}</div>
         </div>
         <div className="bg-white rounded-xl border p-3 shadow-sm">
-          <div className="text-xs text-gray-400 mb-1">Total Litres</div>
-          <div className="text-xl font-bold text-green-700">{grandTotal.toFixed(1)} L</div>
+          <div className="text-xs text-gray-400">Total Litres (TL)</div>
+          <div className="text-xl font-bold text-green-700">{getGrandTotal().toFixed(1)} L</div>
         </div>
         <div className="bg-white rounded-xl border p-3 shadow-sm">
-          <div className="text-xs text-gray-400 mb-1">Avg per Farmer</div>
-          <div className="text-xl font-bold text-blue-700">
-            {farmers.length > 0 ? (grandTotal / farmers.length).toFixed(1) : '0'} L
-          </div>
+          <div className="text-xs text-gray-400">Mid-Month (1–15)</div>
+          <div className="text-xl font-bold text-purple-700">{getMid15Total().toFixed(1)} L</div>
         </div>
         <div className="bg-white rounded-xl border p-3 shadow-sm">
-          <div className="text-xs text-gray-400 mb-1">Gross Value</div>
-          <div className="text-xl font-bold text-purple-700">KES {(grandTotal * 46).toLocaleString()}</div>
+          <div className="text-xs text-gray-400">Total Money (TM)</div>
+          <div className="text-xl font-bold text-blue-700">KES {getGrandMoney().toLocaleString()}</div>
         </div>
       </div>
 
       {/* Journal Grid */}
       <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-        {gridLoading ? (
+        {isLoading ? (
           <div className="text-center py-16 text-gray-400">Loading journal...</div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-16 text-gray-400">
             <div className="text-4xl mb-3">🥛</div>
             <div className="font-medium">No collections found</div>
-            <div className="text-sm mt-1">
-              {routeId ? 'No data for this route yet' : 'Select a route or check if the mobile app has synced'}
-            </div>
+            <div className="text-sm mt-1">Select a route or check mobile app sync</div>
           </div>
         ) : (
-          <div className="overflow-x-auto" style={{ maxHeight: 'calc(100vh - 320px)', overflowY: 'auto' }}>
-            <table className="text-xs border-collapse" style={{ minWidth: `${220 + daysInMonth * 40 + 70}px` }}>
+          <div className="overflow-x-auto" style={{ maxHeight: 'calc(100vh - 380px)', overflowY: 'auto' }}>
+            <table className="text-xs border-collapse"
+              style={{ minWidth: `${60 + 160 + daysInMonth * 38 + 80 + 80 + 80}px` }}>
+
+              {/* Sticky header */}
               <thead className="sticky top-0 z-30">
+                {/* Row 1: section groups */}
+                <tr className="bg-gray-900 text-white text-center">
+                  <th className="sticky left-0 bg-gray-900 z-40 px-2 py-1.5 text-left min-w-[55px]" rowSpan={2}>M.NO</th>
+                  <th className="sticky left-[55px] bg-gray-900 z-40 px-2 py-1.5 text-left min-w-[150px] border-r border-gray-700" rowSpan={2}>FARMER NAME</th>
+                  {/* Days 1-15 group */}
+                  <th className="bg-blue-800 px-1 py-1 border-r border-blue-700 text-xs" colSpan={15}>
+                    1st – 15th
+                  </th>
+                  {/* Total 15th */}
+                  <th className="bg-purple-800 px-1 py-1 border-r border-purple-700 text-xs" rowSpan={2}>
+                    Total<br/>15th
+                  </th>
+                  {/* Days 16-end */}
+                  <th className="bg-blue-900 px-1 py-1 border-r border-blue-800 text-xs" colSpan={daysInMonth - 15}>
+                    16th – {daysInMonth}th
+                  </th>
+                  {/* TL */}
+                  <th className="bg-green-800 px-2 py-1 border-r border-green-700 text-xs" rowSpan={2}>TL</th>
+                  {/* TM */}
+                  <th className="bg-green-900 sticky right-0 px-2 py-1 text-xs" rowSpan={2}>TM<br/>(KES)</th>
+                </tr>
+                {/* Row 2: day numbers */}
                 <tr className="bg-gray-800 text-white">
-                  <th className="sticky left-0 bg-gray-800 z-20 px-3 py-2.5 text-left min-w-[60px]">CODE</th>
-                  <th className="sticky left-[60px] bg-gray-800 z-20 px-3 py-2.5 text-left min-w-[160px] border-r border-gray-700">NAME</th>
-                  {days.map(d => (
-                    <th key={d} className={`px-1 py-2.5 text-center w-10 font-medium ${dayTotals[d] > 0 ? 'text-green-300' : 'text-gray-500'}`}>
-                      {d}
-                    </th>
+                  {midDays.map(d => (
+                    <th key={d} className={`px-0.5 py-1.5 text-center w-9 font-medium ${(dayTotals[d] || 0) > 0 ? 'text-green-300' : 'text-gray-500'}`}>{d}</th>
                   ))}
-                  <th className="sticky right-0 bg-gray-800 px-3 py-2.5 text-right min-w-[65px] border-l border-gray-700">TOTAL</th>
+                  {endDays.map(d => (
+                    <th key={d} className={`px-0.5 py-1.5 text-center w-9 font-medium border-r border-gray-700 ${(dayTotals[d] || 0) > 0 ? 'text-green-300' : 'text-gray-500'}`}>{d}</th>
+                  ))}
                 </tr>
               </thead>
+
               <tbody>
-                {filtered.map((farmer, idx) => (
-                  <tr key={farmer.id}
-                    className={`border-b border-gray-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-green-50`}>
-                    <td className={`sticky left-0 z-10 px-3 py-2 font-mono text-gray-400 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                      {farmer.code}
-                    </td>
-                    <td className={`sticky left-[60px] z-10 px-3 py-2 font-medium text-gray-800 border-r border-gray-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                      {farmer.name}
-                      {farmer.route && !routeId && (
-                        <div className="text-xs text-gray-400 font-normal">{farmer.route.name}</div>
-                      )}
-                    </td>
-                    {days.map(d => {
-                      const val = farmer.days[d];
-                      return (
-                        <td key={d} className="px-0.5 py-2 text-center border-r border-gray-50">
-                          {val > 0 ? (
-                            <span className={`font-medium ${val >= 20 ? 'text-green-700' : val >= 10 ? 'text-green-600' : 'text-green-500'}`}>
-                              {val % 1 === 0 ? val : val.toFixed(1)}
-                            </span>
-                          ) : (
-                            <span className="text-gray-200">–</span>
-                          )}
+                {/* Route header if showing all routes */}
+                {!routeId && (() => {
+                  const groups: Record<string, any[]> = {};
+                  filtered.forEach(f => {
+                    const key = f.route?.name || 'UNKNOWN';
+                    if (!groups[key]) groups[key] = [];
+                    groups[key].push(f);
+                  });
+                  return Object.entries(groups).map(([routeName, routeFarmers]) => (
+                    <>
+                      <tr key={`route-${routeName}`} className="bg-green-700 text-white">
+                        <td className="sticky left-0 bg-green-700 z-10 px-2 py-1.5 font-bold text-xs">{routeName}</td>
+                        <td className="sticky left-[55px] bg-green-700 z-10 px-2 py-1.5 font-bold text-xs border-r border-green-600" colSpan={1}>
+                          {routeFarmers.length} farmers
                         </td>
-                      );
-                    })}
-                    <td className="sticky right-0 px-3 py-2 text-right font-bold text-green-700 border-l border-gray-100 bg-green-50">
-                      {farmer.total.toFixed(1)}
-                    </td>
-                  </tr>
+                        {days.map(d => <td key={d} className="bg-green-700" />)}
+                        <td className="bg-green-700" /><td className="bg-green-700" /><td className="sticky right-0 bg-green-700" />
+                      </tr>
+                      {routeFarmers.map((f, idx) => <FarmerRow key={f.id} f={f} idx={idx} days={days} midDays={midDays} endDays={endDays} getTotal15={getTotal15} getTotalLitres={getTotalLitres} getTotalMoney={getTotalMoney} />)}
+                      <RouteSubtotal key={`sub-${routeName}`} farmers={routeFarmers} days={days} midDays={midDays} endDays={endDays} getDayTotal={(d) => routeFarmers.reduce((s,f) => s + (f.days[d]||0), 0)} getTotal15={() => routeFarmers.reduce((s,f) => s + getTotal15(f), 0)} getTotalLitres={() => routeFarmers.reduce((s,f) => s + getTotalLitres(f), 0)} getTotalMoney={() => routeFarmers.reduce((s,f) => s + getTotalMoney(f), 0)} />
+                    </>
+                  ));
+                })()}
+
+                {/* Single route view */}
+                {routeId && filtered.map((f, idx) => (
+                  <FarmerRow key={f.id} f={f} idx={idx} days={days} midDays={midDays} endDays={endDays} getTotal15={getTotal15} getTotalLitres={getTotalLitres} getTotalMoney={getTotalMoney} />
                 ))}
 
-                {/* Day totals row */}
-                <tr className="bg-gray-800 text-white font-bold border-t-2">
-                  <td className="sticky left-0 bg-gray-800 z-10 px-3 py-2.5" colSpan={2}>DAILY TOTAL</td>
-                  {days.map(d => (
+                {/* Grand totals */}
+                <tr className="bg-gray-800 text-white font-bold sticky bottom-0 z-20">
+                  <td className="sticky left-0 bg-gray-800 z-30 px-2 py-2.5 text-xs" colSpan={2}>GRAND TOTAL</td>
+                  {midDays.map(d => (
                     <td key={d} className="px-0.5 py-2.5 text-center text-xs">
-                      {dayTotals[d] > 0 ? (
-                        <span className="text-green-300">{Number(dayTotals[d]).toFixed(0)}</span>
-                      ) : <span className="text-gray-600">–</span>}
+                      {getDayTotal(d) > 0 ? <span className="text-green-300">{getDayTotal(d).toFixed(0)}</span> : <span className="text-gray-600">–</span>}
                     </td>
                   ))}
-                  <td className="sticky right-0 bg-gray-800 px-3 py-2.5 text-right text-green-300">
-                    {grandTotal.toFixed(1)}
+                  <td className="px-1 py-2.5 text-center text-xs text-purple-300">{getMid15Total().toFixed(0)}</td>
+                  {endDays.map(d => (
+                    <td key={d} className="px-0.5 py-2.5 text-center text-xs border-r border-gray-700">
+                      {getDayTotal(d) > 0 ? <span className="text-green-300">{getDayTotal(d).toFixed(0)}</span> : <span className="text-gray-600">–</span>}
+                    </td>
+                  ))}
+                  <td className="px-1 py-2.5 text-center text-xs text-green-300">{getGrandTotal().toFixed(0)}</td>
+                  <td className="sticky right-0 bg-gray-800 px-2 py-2.5 text-right text-xs text-green-300">
+                    {getGrandMoney().toLocaleString()}
                   </td>
                 </tr>
               </tbody>
@@ -190,5 +215,68 @@ export default function CollectionsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+function FarmerRow({ f, idx, days, midDays, endDays, getTotal15, getTotalLitres, getTotalMoney }: any) {
+  const total15    = getTotal15(f);
+  const totalLitres = getTotalLitres(f);
+  const totalMoney  = getTotalMoney(f);
+  const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+  return (
+    <tr className={`border-b border-gray-100 ${rowBg} hover:bg-green-50`}>
+      <td className={`sticky left-0 z-10 px-2 py-2 font-mono text-gray-400 ${rowBg}`}>{f.code}</td>
+      <td className={`sticky left-[55px] z-10 px-2 py-2 font-medium text-gray-800 border-r border-gray-100 ${rowBg}`}>
+        {f.name}
+        {!f.routeId && f.route && <div className="text-xs text-gray-400 font-normal">{f.route.name}</div>}
+      </td>
+      {midDays.map((d: number) => (
+        <td key={d} className="px-0.5 py-2 text-center border-r border-gray-50">
+          {f.days[d] > 0 ? <span className={`font-medium ${f.days[d] >= 20 ? 'text-green-700' : f.days[d] >= 10 ? 'text-green-600' : 'text-green-500'}`}>{f.days[d] % 1 === 0 ? f.days[d] : f.days[d].toFixed(1)}</span>
+            : <span className="text-gray-200">–</span>}
+        </td>
+      ))}
+      {/* Total 15th */}
+      <td className="px-1 py-2 text-center font-bold text-purple-700 border-r border-purple-100 bg-purple-50">
+        {total15 > 0 ? total15.toFixed(1) : '–'}
+      </td>
+      {endDays.map((d: number) => (
+        <td key={d} className="px-0.5 py-2 text-center border-r border-gray-50">
+          {f.days[d] > 0 ? <span className={`font-medium ${f.days[d] >= 20 ? 'text-green-700' : 'text-green-500'}`}>{f.days[d] % 1 === 0 ? f.days[d] : f.days[d].toFixed(1)}</span>
+            : <span className="text-gray-200">–</span>}
+        </td>
+      ))}
+      {/* TL */}
+      <td className="px-1 py-2 text-center font-bold text-green-700 bg-green-50 border-r border-green-100">
+        {totalLitres > 0 ? totalLitres.toFixed(1) : '–'}
+      </td>
+      {/* TM */}
+      <td className="sticky right-0 px-2 py-2 text-right font-bold text-blue-700 bg-blue-50 border-l border-blue-100 text-xs">
+        {totalMoney > 0 ? totalMoney.toLocaleString(undefined, {maximumFractionDigits: 0}) : '–'}
+      </td>
+    </tr>
+  );
+}
+
+function RouteSubtotal({ farmers, days, midDays, endDays, getDayTotal, getTotal15, getTotalLitres, getTotalMoney }: any) {
+  return (
+    <tr className="bg-green-50 border-y border-green-200 font-semibold">
+      <td className="sticky left-0 bg-green-50 z-10 px-2 py-2 text-xs text-green-700" colSpan={2}>ROUTE TOTAL ({farmers.length})</td>
+      {midDays.map((d: number) => (
+        <td key={d} className="px-0.5 py-2 text-center text-xs text-green-700">
+          {getDayTotal(d) > 0 ? getDayTotal(d).toFixed(0) : '–'}
+        </td>
+      ))}
+      <td className="px-1 py-2 text-center text-xs font-bold text-purple-700 bg-purple-50">{getTotal15().toFixed(0)}</td>
+      {endDays.map((d: number) => (
+        <td key={d} className="px-0.5 py-2 text-center text-xs text-green-700 border-r border-gray-200">
+          {getDayTotal(d) > 0 ? getDayTotal(d).toFixed(0) : '–'}
+        </td>
+      ))}
+      <td className="px-1 py-2 text-center text-xs font-bold text-green-800 bg-green-100">{getTotalLitres().toFixed(0)}</td>
+      <td className="sticky right-0 bg-green-50 px-2 py-2 text-right text-xs font-bold text-blue-700">
+        {getTotalMoney().toLocaleString(undefined,{maximumFractionDigits:0})}
+      </td>
+    </tr>
   );
 }

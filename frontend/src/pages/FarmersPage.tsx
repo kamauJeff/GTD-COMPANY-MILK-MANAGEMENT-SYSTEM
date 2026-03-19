@@ -51,7 +51,27 @@ export default function FarmersPage() {
   });
   const farmerPayments: any[] = paymentsData?.data?.payments ?? paymentsData?.data ?? [];
 
-  const updateMutation = useMutation({
+  const [showAddFarmer, setShowAddFarmer] = useState(false);
+  const [addForm, setAddForm] = useState({
+    code: '', name: '', phone: '', idNumber: '',
+    routeId: '', paymentMethod: 'MPESA', mpesaPhone: '',
+    bankName: '', bankAccount: '', pricePerLitre: '46',
+    paidOn15th: false,
+  });
+
+  const addMut = useMutation({
+    mutationFn: () => farmersApi.create({
+      ...addForm,
+      routeId: Number(addForm.routeId),
+      pricePerLitre: Number(addForm.pricePerLitre),
+    }),
+    onSuccess: () => {
+      setShowAddFarmer(false);
+      setAddForm({ code:'',name:'',phone:'',idNumber:'',routeId:'',paymentMethod:'MPESA',mpesaPhone:'',bankName:'',bankAccount:'',pricePerLitre:'46',paidOn15th:false });
+      qc.invalidateQueries({ queryKey: ['farmers'] });
+    },
+    onError: (e: any) => alert(e?.response?.data?.error || 'Failed to add farmer'),
+  });
     mutationFn: (data: any) => farmersApi.update(selected.id, data),
     onSuccess: (res) => {
       setSelected(res.data);
@@ -123,7 +143,7 @@ export default function FarmersPage() {
               <button onClick={handleExport} className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
                 <Download size={14} /> Export
               </button>
-              <button className="flex items-center gap-2 px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700">
+              <button onClick={() => setShowAddFarmer(true)} className="flex items-center gap-2 px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700">
                 <Plus size={14} /> Add Farmer
               </button>
             </div>
@@ -461,6 +481,97 @@ export default function FarmersPage() {
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+      {showAddFarmer && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="bg-green-700 px-5 py-4 text-white rounded-t-2xl flex justify-between items-center">
+              <h2 className="text-lg font-bold">Add New Farmer</h2>
+              <button onClick={() => setShowAddFarmer(false)} className="text-green-200 hover:text-white"><X size={20} /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: 'Farmer Code *', key: 'code', placeholder: 'e.g. FM1694' },
+                  { label: 'ID Number', key: 'idNumber', placeholder: 'National ID' },
+                ].map(({ label, key, placeholder }) => (
+                  <div key={key}>
+                    <label className="text-xs text-gray-500 mb-1 block">{label}</label>
+                    <input value={(addForm as any)[key]} onChange={e => setAddForm(f => ({ ...f, [key]: e.target.value }))}
+                      placeholder={placeholder} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                ))}
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Full Name *</label>
+                <input value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="e.g. JOHN KAMAU NJOROGE" className="w-full px-3 py-2 border rounded-lg text-sm" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Phone *</label>
+                  <input value={addForm.phone} onChange={e => setAddForm(f => ({ ...f, phone: e.target.value }))}
+                    placeholder="0712345678" className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Route *</label>
+                  <select value={addForm.routeId} onChange={e => setAddForm(f => ({ ...f, routeId: e.target.value }))}
+                    className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="">Select route...</option>
+                    {routes.map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Price per Litre</label>
+                  <input type="number" value={addForm.pricePerLitre} onChange={e => setAddForm(f => ({ ...f, pricePerLitre: e.target.value }))}
+                    className="w-full px-3 py-2 border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Payment Period</label>
+                  <select value={addForm.paidOn15th ? 'mid' : 'end'} onChange={e => setAddForm(f => ({ ...f, paidOn15th: e.target.value === 'mid' }))}
+                    className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="end">End of Month</option>
+                    <option value="mid">Mid Month (15th)</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Payment Method</label>
+                <select value={addForm.paymentMethod} onChange={e => setAddForm(f => ({ ...f, paymentMethod: e.target.value }))}
+                  className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <option value="MPESA">M-Pesa</option>
+                  <option value="BANK">Bank Transfer</option>
+                </select>
+              </div>
+              {addForm.paymentMethod === 'MPESA' ? (
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">M-Pesa Number (254...)</label>
+                  <input value={addForm.mpesaPhone} onChange={e => setAddForm(f => ({ ...f, mpesaPhone: e.target.value }))}
+                    placeholder="254712345678" className="w-full px-3 py-2 border rounded-lg text-sm font-mono" />
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Bank Name</label>
+                    <input value={addForm.bankName} onChange={e => setAddForm(f => ({ ...f, bankName: e.target.value }))}
+                      placeholder="e.g. EQUITY" className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Account Number</label>
+                    <input value={addForm.bankAccount} onChange={e => setAddForm(f => ({ ...f, bankAccount: e.target.value }))}
+                      placeholder="Account No." className="w-full px-3 py-2 border rounded-lg text-sm font-mono" />
+                  </div>
+                </div>
+              )}
+              <button onClick={() => addMut.mutate()} disabled={!addForm.name || !addForm.routeId || addMut.isPending}
+                className="w-full py-3 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 disabled:opacity-50">
+                {addMut.isPending ? 'Adding...' : 'Add Farmer'}
+              </button>
+            </div>
           </div>
         </div>
       )}

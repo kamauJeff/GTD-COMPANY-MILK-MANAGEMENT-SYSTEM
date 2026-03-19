@@ -6,6 +6,7 @@ import {
   ScrollView, FlatList,
 } from 'react-native';
 import { savePendingCollection, searchCachedFarmers, getCachedFarmersByRoute, getCachedFarmerCount } from '../utils/offlineStore';
+import ReceiptScreen from './ReceiptScreen';
 import { syncPendingCollections, downloadFarmersForGrader } from '../utils/syncService';
 import { farmersApi } from '../api/client';
 
@@ -20,6 +21,7 @@ export default function CollectionScreen({ employee, onBack, routeId, routeName 
   const [saving, setSaving]                 = useState(false);
   const [searching, setSearching]           = useState(false);
   const [sessionSaved, setSessionSaved]     = useState<any[]>([]);
+  const [showReceipt, setShowReceipt]       = useState<any>(null);
   const [isOnline, setIsOnline]             = useState(true);
   const [cachedCount, setCachedCount]       = useState(0);
   const [syncing, setSyncing]               = useState(false);
@@ -98,13 +100,21 @@ export default function CollectionScreen({ employee, onBack, routeId, routeName 
         collectedAt: new Date().toISOString(),
       });
 
-      setSessionSaved(prev => [{
+      const newRecord = {
         id: Date.now(),
         farmerName: selectedFarmer.name,
         farmerCode: selectedFarmer.code,
         litres: l,
         time: new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }),
-      }, ...prev]);
+      };
+
+      setSessionSaved(prev => [newRecord, ...prev]);
+
+      // Show receipt
+      const cumulative = sessionSaved
+        .filter(r => r.farmerCode === selectedFarmer.code)
+        .reduce((s, r) => s + r.litres, 0) + l;
+      setShowReceipt({ ...newRecord, cumulative });
 
       setSelectedFarmer(null);
       setSearch('');
@@ -134,6 +144,15 @@ export default function CollectionScreen({ employee, onBack, routeId, routeName 
 
   return (
     <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      {showReceipt && (
+        <ReceiptScreen
+          collection={showReceipt}
+          graderName={employee.name}
+          routeName={routeName || 'Route'}
+          cumulative={showReceipt.cumulative}
+          onClose={() => setShowReceipt(null)}
+        />
+      )}
 
       {/* Header */}
       <View style={s.header}>

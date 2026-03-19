@@ -72,6 +72,8 @@ export default function FarmersPage() {
     },
     onError: (e: any) => alert(e?.response?.data?.error || 'Failed to add farmer'),
   });
+
+  const updateMutation = useMutation({
     mutationFn: (data: any) => farmersApi.update(selected.id, data),
     onSuccess: (res) => {
       setSelected(res.data);

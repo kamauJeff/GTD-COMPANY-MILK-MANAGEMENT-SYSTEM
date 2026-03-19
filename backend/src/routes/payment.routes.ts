@@ -426,13 +426,13 @@ router.post('/disburse', authorize('ADMIN', 'OFFICE'), async (req, res) => {
       const firstName = nameParts[0] || '';
       const lastName = nameParts.slice(1, 3).join(' ') || firstName;
       const phone = (f.mpesaPhone || f.phone || '').replace(/^\+/, '').replace(/^0/, '254');
-      return { firstName, lastName, phone, amount: Number(p.netPay), notes: narration, paymentId: p.id };
+      return { firstName, lastName, phone, amount: Number(p.netPay), narration, paymentId: p.id };
     });
 
     const result = await disburseBatch(recipients, narration);
 
     // Mark successful ones as PAID
-    const successPhones = new Set(result.successful);
+    const successPhones = new Set(result.successful.map(s => s.phone));
     const paidIds = recipients
       .filter(r => successPhones.has(r.phone))
       .map(r => r.paymentId);

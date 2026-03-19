@@ -51,7 +51,23 @@ export default function PaymentsPage() {
   const advances: any[] = advancesData?.data ?? [];
 
   // Summary
-  const { data: summaryData } = useQuery({
+  const disburseMut = useMutation({
+    mutationFn: (rId?: number) => api.post('/api/payments/disburse', { month, year, isMidMonth, routeId: rId || routeId || undefined }),
+    onSuccess: (r) => {
+      const d = r.data;
+      alert(`✅ Disbursement complete!\n\nSent: ${d.successful}/${d.total} M-Pesa payments\nFailed: ${d.failed}\nBank transfers: ${d.bankPayments} (download CSV)\n\n${d.failedDetails?.length ? 'Failed:\n' + d.failedDetails.map((f: any) => `${f.phone}: ${f.error}`).join('\n') : ''}`);
+      qc.invalidateQueries({ queryKey: ['payments-records'] });
+      qc.invalidateQueries({ queryKey: ['payments-summary'] });
+    },
+    onError: (e: any) => alert(`❌ ${e?.response?.data?.error || 'Disbursement failed'}`),
+  });
+
+  const { data: balanceData } = useQuery({
+    queryKey: ['kopokopo-balance'],
+    queryFn: () => api.get('/api/payments/kopokopo-balance'),
+    refetchInterval: 300000, // refresh every 5 min
+  });
+  const kopoBalance = balanceData?.data;
     queryKey: ['payments-summary', month, year],
     queryFn: () => api.get('/api/payments/summary', { params: { month, year } }),
   });
@@ -168,10 +184,14 @@ export default function PaymentsPage() {
       {/* ── COMPUTE TAB ── */}
       {tab === 'compute' && (
         <div className="space-y-4">
-          <div className="flex gap-2 flex-wrap">
+      <div className="flex gap-2 flex-wrap items-center">
+            {/* KopoKopo balance */}
+            <div className={`px-3 py-2 rounded-lg text-sm font-medium border ${kopoBalance?.error ? 'bg-gray-50 text-gray-500 border-gray-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
+              💳 KopoKopo: {kopoBalance?.error ? 'Not connected' : `KES ${Number(kopoBalance?.amount || 0).toLocaleString()}`}
+            </div>
             <button onClick={() => runMut.mutate()} disabled={runMut.isPending}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-              {runMut.isPending ? 'Computing...' : '⚙️ Generate Payment Records'}
+              {runMut.isPending ? 'Computing...' : '⚙️ Generate Records'}
             </button>
             {selectedFarmers.length > 0 && (
               <button onClick={() => approveMut.mutate(undefined)} disabled={approveMut.isPending}
@@ -179,13 +199,20 @@ export default function PaymentsPage() {
                 ✅ Approve Selected ({selectedFarmers.length})
               </button>
             )}
+            <button onClick={() => {
+              if (!confirm('This will send M-Pesa payments via KopoKopo to all APPROVED farmers. Continue?')) return;
+              disburseMut.mutate(undefined);
+            }} disabled={disburseMut.isPending}
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50">
+              {disburseMut.isPending ? '⏳ Sending...' : '🚀 Disburse via KopoKopo'}
+            </button>
             <button onClick={() => downloadFile('/api/payments/kopokopo-export', `kopokopo-${isMidMonth?'mid':'end'}-${MONTHS[month-1]}-${year}.csv`)}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2">
-              <Download size={14} /> KopoKopo Export
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-1.5">
+              <Download size={13} /> KopoKopo CSV
             </button>
             <button onClick={() => downloadFile('/api/payments/bank-export', `bank-${isMidMonth?'mid':'end'}-${MONTHS[month-1]}-${year}.csv`)}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2">
-              <Download size={14} /> Bank Export
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-1.5">
+              <Download size={13} /> Bank CSV
             </button>
           </div>
 

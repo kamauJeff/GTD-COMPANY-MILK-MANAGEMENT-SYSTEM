@@ -96,11 +96,12 @@ router.get('/', async (req, res) => {
       count: payments.length,
       totalGross: payments.reduce((s, p) => s + Number(p.grossPay), 0),
       totalAdvances: payments.reduce((s, p) => s + Number(p.totalAdvances), 0),
-      totalNet: payments.reduce((s, p) => s + Number(p.netPay), 0),
+      totalNet: payments.filter(p => Number(p.netPay) > 0).reduce((s, p) => s + Number(p.netPay), 0),
       paid: payments.filter(p => p.status === 'PAID').length,
       pending: payments.filter(p => p.status === 'PENDING').length,
       approved: payments.filter(p => p.status === 'APPROVED').length,
       negative: payments.filter(p => Number(p.netPay) < 0).length,
+      payable: payments.filter(p => Number(p.netPay) > 0).length,
     };
 
     return res.json({ payments, totals });
@@ -139,10 +140,10 @@ router.get('/', async (req, res) => {
       };
     }
     byRoute[key].farmers.push(r);
-    byRoute[key].totalLitres += r.totalLitres;
-    byRoute[key].totalGross += r.grossPay;
+    byRoute[key].totalLitres   += r.totalLitres;
+    byRoute[key].totalGross    += r.grossPay;
     byRoute[key].totalAdvances += r.totalAdvances;
-    byRoute[key].totalNet += r.netPay;
+    byRoute[key].totalNet      += r.netPay > 0 ? r.netPay : 0; // only payable
     if (r.netPay < 0) byRoute[key].negativeCount++;
   }
 
@@ -181,7 +182,7 @@ router.post('/approve', authorize('ADMIN', 'OFFICE'), async (req, res) => {
   const { month, year, isMidMonth, routeId, farmerIds } = req.body;
   const m = Number(month); const y = Number(year); const mid = !!isMidMonth;
 
-  const where: any = { periodMonth: m, periodYear: y, isMidMonth: mid, status: 'PENDING' };
+  const where: any = { periodMonth: m, periodYear: y, isMidMonth: mid, status: 'PENDING', netPay: { gt: 0 } };
   if (routeId) where.farmer = { routeId: Number(routeId) };
   if (farmerIds?.length) where.farmerId = { in: farmerIds };
 
@@ -326,17 +327,19 @@ router.get('/summary', async (req, res) => {
   res.json({
     mid: {
       count: midPayments.length,
-      totalNet: midPayments.reduce((s, p) => s + Number(p.netPay), 0),
+      totalNet: midPayments.filter(p => Number(p.netPay) > 0).reduce((s, p) => s + Number(p.netPay), 0),
       paid: midPayments.filter(p => p.status === 'PAID').length,
       pending: midPayments.filter(p => p.status === 'PENDING').length,
       negative: midPayments.filter(p => Number(p.netPay) < 0).length,
+      payable: midPayments.filter(p => Number(p.netPay) > 0).length,
     },
     end: {
       count: endPayments.length,
-      totalNet: endPayments.reduce((s, p) => s + Number(p.netPay), 0),
+      totalNet: endPayments.filter(p => Number(p.netPay) > 0).reduce((s, p) => s + Number(p.netPay), 0),
       paid: endPayments.filter(p => p.status === 'PAID').length,
       pending: endPayments.filter(p => p.status === 'PENDING').length,
       negative: endPayments.filter(p => Number(p.netPay) < 0).length,
+      payable: endPayments.filter(p => Number(p.netPay) > 0).length,
     },
     advances: {
       count: advances.length,
@@ -346,3 +349,75 @@ router.get('/summary', async (req, res) => {
 });
 
 export default router;
+
+// POST /api/payments/disburse — send money via KopoKopo
+router.post('/disburse', authorize('ADMIN', 'OFFICE'), async (req, res) => {
+  const { month, year, isMidMonth, routeId } = req.body;
+  const m = Number(month); const y = Number(year); const mid = !!isMidMonth;
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  try {
+    const { disburseBatch } = await import('../services/kopokopo.service');
+
+    const where: any = { periodMonth: m, periodYear: y, isMidMonth: mid, status: 'APPROVED', netPay: { gt: 0 } };
+    if (routeId) where.farmer = { routeId: Number(routeId) };
+
+    const payments = await prisma.farmerPayment.findMany({
+      where,
+      include: { farmer: true },
+    });
+
+    if (payments.length === 0) {
+      return res.status(400).json({ error: 'No approved payments found. Approve payments first.' });
+    }
+
+    const mpesaPayments = payments.filter(p => p.farmer.paymentMethod === 'MPESA');
+    const narration = mid ? `Mid Month ${MONTHS[m-1]} ${y}` : `End Month ${MONTHS[m-1]} ${y}`;
+
+    const recipients = mpesaPayments.map(p => {
+      const f = p.farmer;
+      const nameParts = f.name.trim().split(' ');
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1, 3).join(' ') || firstName;
+      const phone = (f.mpesaPhone || f.phone || '').replace(/^\+/, '').replace(/^0/, '254');
+      return { firstName, lastName, phone, amount: Number(p.netPay), notes: narration, paymentId: p.id };
+    });
+
+    const result = await disburseBatch(recipients, narration);
+
+    // Mark successful ones as PAID
+    const successPhones = new Set(result.successful);
+    const paidIds = recipients
+      .filter(r => successPhones.has(r.phone))
+      .map(r => r.paymentId);
+
+    if (paidIds.length > 0) {
+      await prisma.farmerPayment.updateMany({
+        where: { id: { in: paidIds } },
+        data: { status: 'PAID', paidAt: new Date() },
+      });
+    }
+
+    res.json({
+      total: recipients.length,
+      successful: result.successful.length,
+      failed: result.failed.length,
+      failedDetails: result.failed,
+      bankPayments: payments.length - mpesaPayments.length,
+      message: `Disbursed ${result.successful.length}/${recipients.length} M-Pesa payments. ${payments.length - mpesaPayments.length} bank payments need manual processing.`,
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || 'Disbursement failed' });
+  }
+});
+
+// GET /api/payments/kopokopo-balance
+router.get('/kopokopo-balance', authorize('ADMIN', 'OFFICE'), async (_req, res) => {
+  try {
+    const { getBalance } = await import('../services/kopokopo.service');
+    const balance = await getBalance();
+    res.json(balance || { amount: 0, currency: 'KES', error: 'Could not fetch balance' });
+  } catch (e: any) {
+    res.json({ amount: 0, currency: 'KES', error: e.message });
+  }
+});

@@ -123,9 +123,9 @@ export default function CollectionsPage() {
             </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" style={{ maxHeight: 'calc(100vh - 320px)', overflowY: 'auto' }}>
             <table className="text-xs border-collapse" style={{ minWidth: `${220 + daysInMonth * 40 + 70}px` }}>
-              <thead>
+              <thead className="sticky top-0 z-30">
                 <tr className="bg-gray-800 text-white">
                   <th className="sticky left-0 bg-gray-800 z-20 px-3 py-2.5 text-left min-w-[60px]">CODE</th>
                   <th className="sticky left-[60px] bg-gray-800 z-20 px-3 py-2.5 text-left min-w-[160px] border-r border-gray-700">NAME</th>

@@ -104,6 +104,7 @@ export default function CollectionScreen({ employee, onBack, routeId, routeName 
         id: Date.now(),
         farmerName: selectedFarmer.name,
         farmerCode: selectedFarmer.code,
+        routeName: selectedFarmer.route?.name ?? routeName ?? 'Route',
         litres: l,
         time: new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }),
       };

@@ -5,7 +5,7 @@ import {
   RefreshControl, Alert, ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getPendingCount, getAllCollectionsToday } from '../utils/offlineStore';
+import { getPendingCollections, getAllCollectionsToday } from '../utils/offlineStore';
 import { syncPendingCollections } from '../utils/syncService';
 
 type Screen = 'home' | 'collection' | 'history';
@@ -28,10 +28,10 @@ export default function HomeScreen({ employee, onNavigate, onLogout }: Props) {
   const load = useCallback(async () => {
     try {
       const [cnt, todayRows] = await Promise.all([
-        getPendingCount(),
+        getPendingCollections(),
         getAllCollectionsToday(),
       ]);
-      setPendingCount(cnt);
+      setPendingCount(cnt.length);
       setTodayCount(todayRows.length);
       setTodayLitres(todayRows.reduce((s: number, r: any) => s + r.litres, 0));
     } catch {}

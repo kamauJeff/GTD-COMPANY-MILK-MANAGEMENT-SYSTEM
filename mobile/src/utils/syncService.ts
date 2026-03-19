@@ -7,16 +7,16 @@ export async function syncPendingCollections(): Promise<{ synced: number; failed
   if (pending.length === 0) return { synced: 0, failed: 0 };
 
   const records = pending.map((p: any) => ({
-    farmerId: p.farmerId,
-    litres: p.litres,
-    collectedAt: p.collectedAt,
-    receiptNo: p.receiptNo,
+    farmerId:    p.farmer_id || p.farmerId,
+    litres:      p.litres,
+    collectedAt: p.collected_at || p.collectedAt,
+    receiptNo:   p.receiptNo || null,
   }));
 
   try {
     const result = await collectionsApi.batchSync(records);
     await markSynced(pending.map((p: any) => p.id));
-    return { synced: result.data.created, failed: result.data.failed };
+    return { synced: result.data.created || 0, failed: result.data.failed || 0 };
   } catch {
     return { synced: 0, failed: pending.length };
   }
@@ -24,12 +24,6 @@ export async function syncPendingCollections(): Promise<{ synced: number; failed
 
 export async function downloadFarmersForGrader(routeId?: number): Promise<number> {
   try {
-    if (!routeId) {
-      try {
-        const routeRes = await authApi.myRoute();
-        routeId = routeRes.data?.route?.id;
-      } catch {}
-    }
     const params: any = { isActive: true, limit: 2000 };
     if (routeId) params.routeId = routeId;
     const res = await farmersApi.list(params);

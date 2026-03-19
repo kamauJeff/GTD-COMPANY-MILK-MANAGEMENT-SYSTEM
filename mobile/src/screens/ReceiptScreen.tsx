@@ -71,10 +71,11 @@ export default function ReceiptScreen({ collection, graderName, routeName, cumul
       <div class="divider"></div>
       <div class="row"><span>Served by:</span><span class="bold">${graderName}</span></div>
       <div class="divider"></div>
-      <div class="footer">
-        <div>Customer Service: 0117956599</div>
-        <div>JK Software Solution</div>
-        <div>*** Thank you for your business ***</div>
+      <div class="footer">*** Thank you for your business ***</div>
+      <div style="font-size:8px;text-align:center;color:#555;margin-top:6px;border-top:1px solid #ccc;padding-top:4px">
+        <div style="font-weight:bold">JK SOFTWARE SOLUTIONS</div>
+        <div>Dairy &amp; Business Management Systems</div>
+        <div>&#128222; +254 117 956 599</div>
       </div>
     </body>
     </html>
@@ -98,7 +99,7 @@ export default function ReceiptScreen({ collection, graderName, routeName, cumul
         `Receipt No: ${receiptNo}`,
         `Date: ${dateStr}`,
         `Time: ${timeStr}`,
-        `Route: ${routeName}`,
+        `Route: ${collection.routeName || routeName}`,
         '------------------------------',
         `Farmer No: ${collection.farmerCode}`,
         `Name: ${collection.farmerName}`,
@@ -108,8 +109,11 @@ export default function ReceiptScreen({ collection, graderName, routeName, cumul
         '------------------------------',
         `Served by: ${graderName}`,
         '------------------------------',
-        'Customer Service: 0117956599',
-        'JK Software Solution',
+        '*** Thank you for your business ***',
+        '==============================',
+        'JK SOFTWARE SOLUTIONS',
+        'Dairy & Business Management Systems',
+        'Phone: +254 117 956 599',
         '*** Thank you ***',
       ].join('\n');
       await Share.share({ message: text, title: `Receipt ${receiptNo}` });
@@ -129,7 +133,7 @@ export default function ReceiptScreen({ collection, graderName, routeName, cumul
             <View style={s.row}><Text style={s.label}>Receipt No:</Text><Text style={s.value}>{receiptNo}</Text></View>
             <View style={s.row}><Text style={s.label}>Date:</Text><Text style={s.value}>{dateStr}</Text></View>
             <View style={s.row}><Text style={s.label}>Time:</Text><Text style={[s.value, s.bold]}>{timeStr}</Text></View>
-            <View style={s.row}><Text style={s.label}>Route:</Text><Text style={s.value}>{routeName}</Text></View>
+            <View style={s.row}><Text style={s.label}>Route:</Text><Text style={[s.value, s.bold]}>{(collection as any).routeName || routeName}</Text></View>
             <View style={s.divider} />
 
             <View style={s.row}><Text style={s.label}>Farmer No:</Text><Text style={[s.value, s.bold]}>{collection.farmerCode}</Text></View>
@@ -146,9 +150,12 @@ export default function ReceiptScreen({ collection, graderName, routeName, cumul
             <View style={s.row}><Text style={s.label}>Served by:</Text><Text style={[s.value, s.bold]}>{graderName}</Text></View>
             <View style={s.divider} />
 
-            <Text style={s.footer}>Customer Service: 0117956599</Text>
-            <Text style={s.footer}>JK Software Solution</Text>
             <Text style={s.footer}>*** Thank you for your business ***</Text>
+            <View style={{borderTopWidth:1, borderColor:'#ddd', marginTop:6, paddingTop:4}}>
+              <Text style={[s.footer, {fontWeight:'700', fontSize:10}]}>JK SOFTWARE SOLUTIONS</Text>
+              <Text style={s.footer}>Dairy & Business Management Systems</Text>
+              <Text style={s.footer}>📞 +254 117 956 599</Text>
+            </View>
           </View>
         </ScrollView>
 

@@ -58,8 +58,16 @@ export default function App() {
     setSyncing(true);
     setSyncMsg('Downloading farmers...');
     try {
-      const count = await downloadFarmersForGrader();
-      setSyncMsg(`✅ ${count} farmers cached`);
+      // Get grader's route first
+      const { getGraderRoute } = await import('./src/utils/syncService');
+      const route = await getGraderRoute();
+      if (route) {
+        setRouteId(route.id);
+        setRouteName(route.name);
+        await AsyncStorage.setItem('gutoria_route', JSON.stringify(route));
+      }
+      const count = await downloadFarmersForGrader(route?.id);
+      setSyncMsg(`✅ ${count} farmers cached${route ? ` · ${route.name}` : ''}`);
       setTimeout(() => setSyncMsg(''), 3000);
     } catch {
       setSyncMsg('Offline — using cached data');

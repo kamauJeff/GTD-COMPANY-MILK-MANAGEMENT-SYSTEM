@@ -180,7 +180,7 @@ export default function CollectionsPage() {
                         <td className="bg-green-700" /><td className="bg-green-700" /><td className="sticky right-0 bg-green-700" />
                       </tr>
                       {routeFarmers.map((f, idx) => <FarmerRow key={f.id} f={f} idx={idx} days={days} midDays={midDays} endDays={endDays} getTotal15={getTotal15} getTotalLitres={getTotalLitres} getTotalMoney={getTotalMoney} />)}
-                      <RouteSubtotal key={`sub-${routeName}`} farmers={routeFarmers} days={days} midDays={midDays} endDays={endDays} getDayTotal={(d) => routeFarmers.reduce((s,f) => s + (f.days[d]||0), 0)} getTotal15={() => routeFarmers.reduce((s,f) => s + getTotal15(f), 0)} getTotalLitres={() => routeFarmers.reduce((s,f) => s + getTotalLitres(f), 0)} getTotalMoney={() => routeFarmers.reduce((s,f) => s + getTotalMoney(f), 0)} />
+                      <RouteSubtotal key={`sub-${routeName}`} farmers={routeFarmers} days={days} midDays={midDays} endDays={endDays} getDayTotal={(d: number) => routeFarmers.reduce((s: number, f: any) => s + (f.days[d]||0), 0)} getTotal15={() => routeFarmers.reduce((s: number, f: any) => s + getTotal15(f), 0)} getTotalLitres={() => routeFarmers.reduce((s: number, f: any) => s + getTotalLitres(f), 0)} getTotalMoney={() => routeFarmers.reduce((s: number, f: any) => s + getTotalMoney(f), 0)} />
                     </>
                   ));
                 })()}

@@ -64,25 +64,45 @@ export async function batchSync(req: Request, res: Response) {
     throw new AppError(400, 'records array is required');
   }
 
-  const results = { created: 0, failed: 0, errors: [] as string[] };
+  const results = { created: 0, updated: 0, failed: 0, errors: [] as string[] };
 
   for (const r of records) {
     try {
       const farmer = await prisma.farmer.findUnique({ where: { id: r.farmerId } });
       if (!farmer) { results.failed++; results.errors.push(`Unknown farmer ${r.farmerId}`); continue; }
 
-      await prisma.milkCollection.create({
-        data: {
-          farmerId: r.farmerId,
-          routeId: farmer.routeId,
-          graderId: req.user!.sub,
-          litres: r.litres,
-          collectedAt: new Date(r.collectedAt),
-          receiptNo: r.receiptNo,
-          synced: true,
-        },
+      const collectedAt = new Date(r.collectedAt);
+      // Check if a record already exists for this farmer on this exact day
+      const dayStart = new Date(collectedAt); dayStart.setHours(0,0,0,0);
+      const dayEnd   = new Date(collectedAt); dayEnd.setHours(23,59,59,999);
+
+      const existing = await prisma.milkCollection.findFirst({
+        where: { farmerId: r.farmerId, collectedAt: { gte: dayStart, lte: dayEnd } },
+        orderBy: { collectedAt: 'desc' },
       });
-      results.created++;
+
+      if (existing) {
+        // REPLACE — update the existing record with the new litres value
+        await prisma.milkCollection.update({
+          where: { id: existing.id },
+          data: { litres: r.litres, collectedAt, receiptNo: r.receiptNo ?? existing.receiptNo },
+        });
+        results.updated++;
+      } else {
+        // CREATE new record
+        await prisma.milkCollection.create({
+          data: {
+            farmerId:    r.farmerId,
+            routeId:     farmer.routeId,
+            graderId:    (req.user as any).sub,
+            litres:      r.litres,
+            collectedAt,
+            receiptNo:   r.receiptNo,
+            synced:      true,
+          },
+        });
+        results.created++;
+      }
 
       sendCollectionSMS(farmer, { litres: r.litres, collectedAt: r.collectedAt } as any).catch(() => {});
     } catch (e: any) {

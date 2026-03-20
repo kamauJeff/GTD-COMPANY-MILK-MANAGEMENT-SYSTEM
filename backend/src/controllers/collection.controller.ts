@@ -294,3 +294,104 @@ export async function exportJournalExcel(req: Request, res: Response) {
   res.setHeader('Content-Disposition', `attachment; filename="collections-${MONTHS[m-1]}-${y}.csv"`);
   res.send(csv);
 }
+
+// Enhanced journal grid with B/f balance and advances
+export async function getJournalGridFull(req: Request, res: Response) {
+  const { month, year, routeId } = req.query;
+  const m = Number(month) || new Date().getMonth() + 1;
+  const y = Number(year)  || new Date().getFullYear();
+  const start = new Date(y, m - 1, 1);
+  const end   = new Date(y, m, 1);
+  const ADVANCE_DATES = [5, 10, 15, 20, 25]; // advance disbursement days
+
+  const where: any = { collectedAt: { gte: start, lt: end } };
+  if (routeId) where.routeId = Number(routeId);
+
+  const [collections, advances] = await Promise.all([
+    prisma.milkCollection.findMany({
+      where,
+      include: {
+        farmer: { select: { id: true, code: true, name: true, pricePerLitre: true } },
+        route:  { select: { id: true, code: true, name: true } },
+      },
+      orderBy: { collectedAt: 'asc' },
+    }),
+    prisma.farmerAdvance.findMany({
+      where: { advanceDate: { gte: start, lt: end } },
+      include: { farmer: { select: { id: true, code: true } } },
+    }),
+  ]);
+
+  // Build farmer map
+  const farmerMap: Record<number, any> = {};
+  for (const c of collections) {
+    const fid = c.farmerId;
+    const day = new Date(c.collectedAt).getDate();
+    if (!farmerMap[fid]) {
+      farmerMap[fid] = {
+        id: fid, code: c.farmer.code, name: c.farmer.name,
+        pricePerLitre: Number(c.farmer.pricePerLitre),
+        route: c.route, days: {}, total: 0,
+        advances: { 5: 0, 10: 0, 15: 0, 20: 0, 25: 0 },
+        totalAdvances: 0, bfBalance: 0,
+      };
+    }
+    farmerMap[fid].days[day] = (farmerMap[fid].days[day] || 0) + Number(c.litres);
+    farmerMap[fid].total += Number(c.litres);
+  }
+
+  // Map advances to nearest disbursement date
+  for (const adv of advances) {
+    const fid = adv.farmerId;
+    if (!farmerMap[fid]) continue;
+    const advDay = new Date(adv.advanceDate).getDate();
+    // Assign to nearest advance date (5,10,15,20,25)
+    const nearestDate = ADVANCE_DATES.reduce((prev, curr) =>
+      Math.abs(curr - advDay) < Math.abs(prev - advDay) ? curr : prev
+    );
+    farmerMap[fid].advances[nearestDate] = (farmerMap[fid].advances[nearestDate] || 0) + Number(adv.amount);
+    farmerMap[fid].totalAdvances += Number(adv.amount);
+  }
+
+  // Get previous month negative balances as B/f
+  const prevMonth = m === 1 ? 12 : m - 1;
+  const prevYear  = m === 1 ? y - 1 : y;
+  const prevPayments = await prisma.farmerPayment.findMany({
+    where: { periodMonth: prevMonth, periodYear: prevYear, netPay: { lt: 0 }, status: 'PAID' },
+    select: { farmerId: true, netPay: true },
+  });
+  for (const pp of prevPayments) {
+    if (farmerMap[pp.farmerId]) {
+      farmerMap[pp.farmerId].bfBalance = Math.abs(Number(pp.netPay));
+    }
+  }
+
+  // Compute derived fields
+  const farmers = Object.values(farmerMap).sort((a, b) => a.name.localeCompare(b.name));
+  for (const f of farmers) {
+    const total15 = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15].reduce((s, d) => s + (f.days[d] || 0), 0);
+    f.total15     = total15;
+    f.totalLitres = f.total;
+    f.totalMoney  = f.total * f.pricePerLitre;
+    f.amtPayable  = f.totalMoney - f.totalAdvances - f.bfBalance;
+    f.midTM       = total15 * f.pricePerLitre;
+    f.midPayable  = f.midTM - f.advances[5] - f.advances[10] - f.advances[15];
+  }
+
+  const dayTotals: Record<number, number> = {};
+  for (const f of farmers) {
+    for (const [day, litres] of Object.entries(f.days)) {
+      dayTotals[Number(day)] = (dayTotals[Number(day)] || 0) + Number(litres);
+    }
+  }
+
+  res.json({
+    farmers,
+    dayTotals,
+    daysInMonth: new Date(y, m, 0).getDate(),
+    month: m, year: y,
+    grandTotal: farmers.reduce((s, f) => s + f.total, 0),
+    grandMoney: farmers.reduce((s, f) => s + f.totalMoney, 0),
+    advanceDates: ADVANCE_DATES,
+  });
+}

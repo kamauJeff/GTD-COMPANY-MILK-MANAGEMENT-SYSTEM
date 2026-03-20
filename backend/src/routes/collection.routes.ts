@@ -165,9 +165,10 @@ router.post('/manual', authorize('ADMIN', 'OFFICE'), async (req: any, res) => {
   res.status(201).json(collection);
 });
 
-// POST /api/collections/advance/correct — REPLACE advance or b/f (not add)
+// POST /api/collections/advance/correct — ADD to advance or SET b/f
 router.post('/advance/correct', authorize('ADMIN', 'OFFICE'), async (req, res) => {
-  const { farmerId, farmerCode, amount, notes, advanceDate } = req.body;
+  const { farmerId, farmerCode, amount, notes, advanceDate, mode } = req.body;
+  // mode: 'add' = add to existing | 'replace' = replace | 'bf' = b/f correction
   let fId = farmerId;
   if (!fId && farmerCode) {
     const farmer = await prisma.farmer.findFirst({
@@ -183,54 +184,50 @@ router.post('/advance/correct', authorize('ADMIN', 'OFFICE'), async (req, res) =
   }
   if (!fId) return res.status(400).json({ error: 'Farmer code or name required' });
 
-  const isBfCorrection = notes?.toLowerCase().includes('b/f');
+  const isBf = mode === 'bf' || notes?.toLowerCase().includes('b/f');
+  const isReplace = mode === 'replace';
   const now = new Date();
   const m = now.getMonth() + 1;
   const y = now.getFullYear();
 
-  if (isBfCorrection) {
-    // DELETE all existing b/f deductions for this farmer this month, then create fresh
+  if (isBf) {
+    // B/f: always replace (set the exact amount)
     await prisma.farmerDeduction.deleteMany({
-      where: {
-        farmerId: Number(fId),
-        periodMonth: m, periodYear: y,
-        reason: { contains: 'B/f' },
-      },
+      where: { farmerId: Number(fId), periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
     });
     const result = await prisma.farmerDeduction.create({
-      data: {
-        farmerId:      Number(fId),
-        amount:        Number(amount),
-        reason:        notes || 'B/f correction',
-        deductionDate: now,
-        periodMonth:   m,
-        periodYear:    y,
-      },
+      data: { farmerId: Number(fId), amount: Number(amount), reason: notes || 'B/f correction', deductionDate: now, periodMonth: m, periodYear: y },
       include: { farmer: { select: { code: true, name: true } } },
     });
-    res.status(201).json({ ...result, type: 'bf_correction', replaced: true });
-  } else {
-    // REPLACE advance for this specific date — delete existing for that day then create
-    if (advanceDate) {
-      const advDay = new Date(advanceDate); advDay.setHours(0,0,0,0);
-      const advDayEnd = new Date(advanceDate); advDayEnd.setHours(23,59,59,999);
-      await prisma.farmerAdvance.deleteMany({
-        where: {
-          farmerId: Number(fId),
-          advanceDate: { gte: advDay, lte: advDayEnd },
-        },
-      });
-    }
+    return res.status(201).json({ ...result, type: 'bf_correction', replaced: true });
+  }
+
+  // Advance: check existing total for this date
+  const advDay = advanceDate ? new Date(advanceDate) : now;
+  const dayStart = new Date(advDay); dayStart.setHours(0,0,0,0);
+  const dayEnd   = new Date(advDay); dayEnd.setHours(23,59,59,999);
+
+  const existingAdvances = await prisma.farmerAdvance.findMany({
+    where: { farmerId: Number(fId), advanceDate: { gte: dayStart, lte: dayEnd } },
+  });
+  const existingTotal = existingAdvances.reduce((s, a) => s + Number(a.amount), 0);
+
+  if (isReplace) {
+    // Delete existing for this day and set fresh
+    await prisma.farmerAdvance.deleteMany({ where: { farmerId: Number(fId), advanceDate: { gte: dayStart, lte: dayEnd } } });
     const result = await prisma.farmerAdvance.create({
-      data: {
-        farmerId:    Number(fId),
-        amount:      Number(amount),
-        advanceDate: advanceDate ? new Date(advanceDate) : now,
-        notes:       notes || 'Office advance correction',
-      },
+      data: { farmerId: Number(fId), amount: Number(amount), advanceDate: advDay, notes: notes || 'Office correction (replaced)' },
       include: { farmer: { select: { code: true, name: true } } },
     });
-    res.status(201).json({ ...result, type: 'advance', replaced: true });
+    return res.status(201).json({ ...result, type: 'advance', previousTotal: existingTotal, newTotal: Number(amount), breakdown: `${Number(amount)} (replaced ${existingTotal})` });
+  } else {
+    // ADD to existing
+    const result = await prisma.farmerAdvance.create({
+      data: { farmerId: Number(fId), amount: Number(amount), advanceDate: advDay, notes: notes || `Added to existing ${existingTotal}` },
+      include: { farmer: { select: { code: true, name: true } } },
+    });
+    const newTotal = existingTotal + Number(amount);
+    return res.status(201).json({ ...result, type: 'advance', previousTotal: existingTotal, added: Number(amount), newTotal, breakdown: `${existingTotal} + ${Number(amount)} = ${newTotal}` });
   }
 });
 

@@ -360,16 +360,17 @@ export async function getJournalGridFull(req: Request, res: Response) {
     farmerMap[fid].total += Number(c.litres);
   }
 
-  // Map advances to nearest disbursement date
+  // Map advances to exact disbursement date key
   for (const adv of advances) {
     const fid = adv.farmerId;
     if (!farmerMap[fid]) continue;
     const advDay = new Date(adv.advanceDate).getDate();
-    // Assign to nearest advance date (5,10,15,20,25)
-    const nearestDate = ADVANCE_DATES.reduce((prev, curr) =>
-      Math.abs(curr - advDay) < Math.abs(prev - advDay) ? curr : prev
-    );
-    farmerMap[fid].advances[nearestDate] = (farmerMap[fid].advances[nearestDate] || 0) + Number(adv.amount);
+    // Use exact day if it's one of the advance dates, otherwise find nearest
+    const exactMatch = ADVANCE_DATES.includes(advDay) ? advDay :
+      ADVANCE_DATES.reduce((prev, curr) =>
+        Math.abs(curr - advDay) < Math.abs(prev - advDay) ? curr : prev
+      );
+    farmerMap[fid].advances[exactMatch] = (farmerMap[fid].advances[exactMatch] || 0) + Number(adv.amount);
     farmerMap[fid].totalAdvances += Number(adv.amount);
   }
 

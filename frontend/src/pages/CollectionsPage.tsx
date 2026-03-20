@@ -36,15 +36,25 @@ export default function CollectionsPage() {
 
   const advanceMut = useMutation({
     mutationFn: () => {
-      // Extract advance date from notes if it contains a specific date
-      const advDayMatch = advanceForm.notes.match(/Advance (\d+)th/);
-      const advDay = advDayMatch ? Number(advDayMatch[1]) : null;
-      const advanceDate = advDay ? `${year}-${String(month).padStart(2,'0')}-${String(advDay).padStart(2,'0')}` : undefined;
-      return api.post('/api/collections/advance/correct', { ...advanceForm, advanceDate });
+      const mode = ['bf','add','replace'].includes(advanceForm.notes) ? advanceForm.notes : 'add';
+      const advDate = (advanceForm as any)._advDate;
+      return api.post('/api/collections/advance/correct', {
+        farmerCode: advanceForm.farmerCode,
+        amount: Number(advanceForm.amount),
+        mode,
+        advanceDate: advDate || undefined,
+        notes: mode === 'bf' ? 'B/f correction' : `${mode} advance ${advDate ? advDate.slice(-2)+'th' : ''}`,
+      });
     },
-    onSuccess: (r) => { showSuccess(`${r.data.type === 'bf_correction' ? 'B/f correction' : 'Advance'} recorded for ${r.data.farmer?.name}`); qc.invalidateQueries({ queryKey: ['collection-journal'] }); setAdvanceForm({ farmerCode: '', amount: '', notes: '' }); },
+    onSuccess: (r) => {
+      const d = r.data;
+      showSuccess(d.breakdown ? `Saved — ${d.breakdown}` : `${d.type === 'bf_correction' ? 'B/f set' : 'Advance saved'}`, d.farmer?.name);
+      qc.invalidateQueries({ queryKey: ['collection-journal'] });
+      setAdvanceForm({ farmerCode: '', amount: '', notes: '' });
+    },
     onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
   });
+
 
   const { data: gridData, isLoading } = useQuery({
     queryKey: ['collection-journal', month, year, routeId],
@@ -359,53 +369,73 @@ export default function CollectionsPage() {
                 <>
                   <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl text-xs text-purple-700 dark:text-purple-300 flex gap-2">
                     <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
-                    Correct b/f balance or record/correct an advance for a specific disbursement date.
+                    Set b/f exactly, or add/replace an advance for a disbursement date.
                   </div>
+
+                  {/* Mode */}
                   <div>
-                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Farmer Code or Name *</label>
-                    <input value={advanceForm.farmerCode}
-                      onChange={e => setAdvanceForm(f => ({...f, farmerCode: e.target.value}))}
-                      placeholder="e.g. FM0001 or John Kamau" className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Type</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {[['bf', 'B/f Correction'],['advance', 'Advance Correction']].map(([v,l]) => (
-                        <button key={v} onClick={() => setAdvanceForm(f => ({...f, notes: v === 'bf' ? 'B/f correction' : ''}))}
-                          className={`py-2 rounded-xl text-xs font-medium border transition-all ${advanceForm.notes?.startsWith('B/f') || (v === 'advance' && !advanceForm.notes?.startsWith('B/f')) ? (v === 'bf' && advanceForm.notes?.startsWith('B/f') ? 'bg-purple-600 text-white border-purple-600' : v === 'advance' && !advanceForm.notes?.startsWith('B/f') ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300') : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300'}`}>
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-2 block font-medium">Correction Type *</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {([['bf','⚖️ Set B/f'],['add','➕ Add to Advance'],['replace','🔁 Replace Advance']] as const).map(([v,l]) => (
+                        <button key={v} onClick={() => setAdvanceForm(f => ({...f, notes: v}))}
+                          className={`py-2.5 rounded-xl text-xs font-medium border transition-all ${advanceForm.notes === v
+                            ? v === 'bf' ? 'bg-purple-600 text-white border-purple-600'
+                              : v === 'add' ? 'bg-green-600 text-white border-green-600'
+                              : 'bg-orange-600 text-white border-orange-600'
+                            : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
                           {l}
                         </button>
                       ))}
                     </div>
                   </div>
+
                   <div>
-                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Advance Date (for advance corrections)</label>
-                    <div className="flex gap-2 flex-wrap">
-                      {[5,10,20,25].map(d => {
-                        const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                        return (
-                          <button key={d} onClick={() => setAdvanceForm(f => ({...f, notes: `Advance ${d}th correction`}))}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${advanceForm.notes === `Advance ${d}th correction` ? 'bg-orange-600 text-white border-orange-600' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
-                            {d}th
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Farmer Code or Name *</label>
+                    <input value={advanceForm.farmerCode}
+                      onChange={e => setAdvanceForm(f => ({...f, farmerCode: e.target.value}))}
+                      placeholder="FM0001 or John Kamau" className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100" />
                   </div>
+
+                  {advanceForm.notes !== 'bf' && (
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Advance Date *</label>
+                      <div className="flex gap-2">
+                        {[5,10,20,25].map(d => {
+                          const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                          return (
+                            <button key={d}
+                              onClick={() => setAdvanceForm(f => ({...f, farmerCode: f.farmerCode, _advDate: dateStr} as any))}
+                              className={`flex-1 py-2.5 rounded-xl text-xs font-medium border transition-all ${(advanceForm as any)._advDate === dateStr ? 'bg-orange-600 text-white border-orange-600' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-orange-50 hover:border-orange-400'}`}>
+                              {d}th
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   <div>
-                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Amount (KES) — negative to reduce *</label>
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">
+                      {advanceForm.notes === 'add' ? 'Amount to ADD (KES) *' : advanceForm.notes === 'replace' ? 'New Exact Amount (KES) *' : 'B/f Amount (KES) *'}
+                    </label>
                     <input type="number" value={advanceForm.amount}
                       onChange={e => setAdvanceForm(f => ({...f, amount: e.target.value}))}
-                      placeholder="e.g. 500 to add, -500 to reduce" className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100 font-mono text-lg" />
+                      placeholder={advanceForm.notes === 'add' ? 'e.g. 500 — adds to existing 2500 → 3000' : 'e.g. 2500 — sets exact value'}
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100 font-mono text-lg" />
+                    {advanceForm.notes === 'add' && advanceForm.amount && (
+                      <p className="mt-1 text-xs text-green-600 dark:text-green-400">
+                        💡 Journal will show: existing + {Number(advanceForm.amount).toLocaleString()} (e.g. 2,500 + 500 = 3,000)
+                      </p>
+                    )}
+                    {advanceForm.notes === 'replace' && advanceForm.amount && (
+                      <p className="mt-1 text-xs text-orange-600">
+                        🔁 Replaces whatever is there with exactly KES {Number(advanceForm.amount).toLocaleString()}
+                      </p>
+                    )}
                   </div>
-                  <div>
-                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Notes *</label>
-                    <input value={advanceForm.notes}
-                      onChange={e => setAdvanceForm(f => ({...f, notes: e.target.value}))}
-                      placeholder="Reason for adjustment"
-                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100" />
-                  </div>
-                  <button onClick={() => advanceMut.mutate()} disabled={!advanceForm.farmerCode || !advanceForm.amount || !advanceForm.notes || advanceMut.isPending}
+
+                  <button onClick={() => advanceMut.mutate()}
+                    disabled={!advanceForm.farmerCode || !advanceForm.amount || !advanceForm.notes || (advanceForm.notes !== 'bf' && !(advanceForm as any)._advDate) || advanceMut.isPending}
                     className="w-full py-3 bg-purple-600 text-white rounded-xl font-medium hover:bg-purple-700 disabled:opacity-50 text-sm">
                     {advanceMut.isPending ? 'Saving...' : 'Save Correction'}
                   </button>
@@ -423,7 +453,7 @@ function FarmerRow({ f, idx, days, midDays, endDays, getTotal15, getTotalLitres,
   const total15     = getTotal15(f);
   const totalLitres = getTotalLitres(f);
   const totalMoney  = getTotalMoney(f);
-  const advDates    = [5, 10, 15, 20, 25];
+  const advDates    = [5, 10, 20, 25];
   const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-gray-50';
   return (
     <tr className={`border-b border-gray-100 ${rowBg} hover:bg-green-50`}>

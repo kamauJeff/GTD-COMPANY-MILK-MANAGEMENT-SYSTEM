@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { farmersApi, routesApi, collectionsApi, paymentsApi } from '../api/client';
+import { farmersApi, routesApi, collectionsApi, paymentsApi, api } from '../api/client';
+import { showSuccess, showError } from '../components/Toast';
 import { Search, Upload, Download, Plus, X, Phone, MapPin, CreditCard, Edit2, History, DollarSign, Save, XCircle } from 'lucide-react';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -70,7 +71,7 @@ export default function FarmersPage() {
       setAddForm({ code:'',name:'',phone:'',idNumber:'',routeId:'',paymentMethod:'MPESA',mpesaPhone:'',bankName:'',bankAccount:'',pricePerLitre:'46',paidOn15th:false });
       qc.invalidateQueries({ queryKey: ['farmers'] });
     },
-    onError: (e: any) => alert(e?.response?.data?.error || 'Failed to add farmer'),
+    onError: (e: any) => showError(e?.response?.data?.error || 'Failed to add farmer'),
   });
 
   const updateMutation = useMutation({
@@ -81,7 +82,7 @@ export default function FarmersPage() {
       qc.invalidateQueries({ queryKey: ['farmers'] });
       qc.invalidateQueries({ queryKey: ['farmer', selected.id] });
     },
-    onError: (e: any) => alert(e?.response?.data?.error || 'Update failed'),
+    onError: (e: any) => showError(e?.response?.data?.error || 'Update failed'),
   });
 
   const handleEdit = () => {
@@ -127,6 +128,30 @@ export default function FarmersPage() {
     collByDay[key] = (collByDay[key] || 0) + Number(c.litres);
   });
 
+  const [showPriceManager, setShowPriceManager] = useState(false);
+  const [priceForm, setPriceForm] = useState({ price: '46', routeId: '', mode: 'all' as 'all'|'route' });
+
+  const { data: priceSummaryData, refetch: refetchPrices } = useQuery({
+    queryKey: ['price-summary'],
+    queryFn: () => api.get('/api/farmers/price-summary'),
+    enabled: showPriceManager,
+  });
+  const priceSummary = priceSummaryData?.data?.summary ?? [];
+
+  const setPriceMut = useMutation({
+    mutationFn: () => api.post('/api/farmers/set-price', {
+      pricePerLitre: Number(priceForm.price),
+      ...(priceForm.mode === 'route' && priceForm.routeId ? { routeId: Number(priceForm.routeId) } : {}),
+    }),
+    onSuccess: (r) => {
+      showSuccess(`Price updated for ${r.data.updated} farmers`);
+      qc.invalidateQueries({ queryKey: ['farmers'] });
+      qc.invalidateQueries({ queryKey: ['price-summary'] });
+      refetchPrices();
+    },
+    onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
+  });
+
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Main list */}
@@ -134,16 +159,20 @@ export default function FarmersPage() {
         <div className="p-6">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-gray-800">Farmers</h1>
+              <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Farmers</h1>
               <p className="text-sm text-gray-500">{total.toLocaleString()} farmers · {routes.length} routes</p>
             </div>
-            <div className="flex gap-2">
-              <label className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
+            <div className="flex gap-2 flex-wrap">
+              <label className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-200">
                 <Upload size={14} /> Import
                 <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImport} />
               </label>
-              <button onClick={handleExport} className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+              <button onClick={handleExport} className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-200">
                 <Download size={14} /> Export
+              </button>
+              <button onClick={() => setShowPriceManager(true)}
+                className="flex items-center gap-2 px-3 py-2 text-sm border border-orange-300 text-orange-600 dark:text-orange-400 rounded-lg hover:bg-orange-50 dark:hover:bg-orange-900/20">
+                💰 Set Price
               </button>
               <button onClick={() => setShowAddFarmer(true)} className="flex items-center gap-2 px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700">
                 <Plus size={14} /> Add Farmer
@@ -483,6 +512,93 @@ export default function FarmersPage() {
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+      {showPriceManager && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="bg-orange-600 px-5 py-4 text-white rounded-t-2xl flex justify-between items-center">
+              <div>
+                <h2 className="text-lg font-bold">💰 Set Price Per Litre</h2>
+                <p className="text-orange-200 text-xs mt-0.5">Update milk price for farmers</p>
+              </div>
+              <button onClick={() => setShowPriceManager(false)} className="text-orange-200 hover:text-white"><X size={20} /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              {/* Current price distribution */}
+              {priceSummary.length > 0 && (
+                <div>
+                  <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">CURRENT PRICE DISTRIBUTION</div>
+                  <div className="space-y-2">
+                    {priceSummary.map((p: any) => (
+                      <div key={p.price} className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                        <div>
+                          <span className="font-bold text-orange-600">KES {p.price}/L</span>
+                          <span className="text-xs text-gray-400 ml-2">({p.routes.slice(0,3).join(', ')}{p.routes.length > 3 ? '...' : ''})</span>
+                        </div>
+                        <span className="font-bold text-gray-700 dark:text-gray-200">{p.count} farmers</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3">SET NEW PRICE</div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">New Price (KES per litre) *</label>
+                    <input type="number" value={priceForm.price} onChange={e => setPriceForm(f => ({...f, price: e.target.value}))}
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100 font-mono text-lg font-bold focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Apply to</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button onClick={() => setPriceForm(f => ({...f, mode: 'all', routeId: ''}))}
+                        className={`px-3 py-2.5 rounded-xl text-sm font-medium border transition-all ${priceForm.mode === 'all' ? 'bg-orange-600 text-white border-orange-600' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+                        🌍 All Farmers ({priceSummary.reduce((s: number, p: any) => s + p.count, 0)})
+                      </button>
+                      <button onClick={() => setPriceForm(f => ({...f, mode: 'route'}))}
+                        className={`px-3 py-2.5 rounded-xl text-sm font-medium border transition-all ${priceForm.mode === 'route' ? 'bg-orange-600 text-white border-orange-600' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+                        📍 Specific Route
+                      </button>
+                    </div>
+                  </div>
+
+                  {priceForm.mode === 'route' && (
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Select Route</label>
+                      <select value={priceForm.routeId} onChange={e => setPriceForm(f => ({...f, routeId: e.target.value}))}
+                        className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100">
+                        <option value="">Select route...</option>
+                        {routes.map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                      </select>
+                    </div>
+                  )}
+
+                  {priceForm.price && Number(priceForm.price) > 0 && (
+                    <div className="p-3 bg-orange-50 dark:bg-orange-900/20 rounded-xl text-sm text-orange-700 dark:text-orange-300">
+                      ⚠️ This will set <strong>KES {priceForm.price}/litre</strong> for{' '}
+                      {priceForm.mode === 'all' ? 'ALL active farmers' : `all farmers on ${routes.find((r: any) => r.id === Number(priceForm.routeId))?.name || 'selected route'}`}.
+                      Payment calculations will use the new price immediately.
+                    </div>
+                  )}
+
+                  <button onClick={() => {
+                    if (!priceForm.price || Number(priceForm.price) < 1) { showError('Enter a valid price'); return; }
+                    if (priceForm.mode === 'route' && !priceForm.routeId) { showError('Select a route'); return; }
+                    if (!confirm(`Set KES ${priceForm.price}/L for ${priceForm.mode === 'all' ? 'ALL farmers' : 'selected route'}?`)) return;
+                    setPriceMut.mutate();
+                  }} disabled={setPriceMut.isPending}
+                    className="w-full py-3 bg-orange-600 text-white rounded-xl font-medium hover:bg-orange-700 disabled:opacity-50 text-sm">
+                    {setPriceMut.isPending ? 'Updating...' : `✓ Set KES ${priceForm.price}/L`}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -70,13 +70,20 @@ router.get('/statement', async (req, res) => {
   });
 });
 
-// PUT /api/collections/correct-by-farmer — correct by farmer code + date
+// PUT /api/collections/correct-by-farmer — correct by farmer code/name + date
 router.put('/correct-by-farmer', authorize('ADMIN', 'OFFICE'), async (req, res) => {
   const { farmerCode, collectedAt, litres } = req.body;
   if (!farmerCode || !collectedAt || !litres) return res.status(400).json({ error: 'farmerCode, collectedAt and litres are required' });
 
-  const farmer = await prisma.farmer.findFirst({ where: { code: farmerCode.toUpperCase() } });
-  if (!farmer) return res.status(404).json({ error: `Farmer ${farmerCode} not found` });
+  const farmer = await prisma.farmer.findFirst({
+    where: {
+      OR: [
+        { code: farmerCode.toUpperCase() },
+        { name: { contains: farmerCode, mode: 'insensitive' } },
+      ]
+    }
+  });
+  if (!farmer) return res.status(404).json({ error: `Farmer "${farmerCode}" not found` });
 
   const dayStart = new Date(collectedAt); dayStart.setHours(0,0,0,0);
   const dayEnd   = new Date(collectedAt); dayEnd.setHours(23,59,59,999);
@@ -87,8 +94,9 @@ router.put('/correct-by-farmer', authorize('ADMIN', 'OFFICE'), async (req, res) 
     orderBy: { collectedAt: 'desc' },
   });
 
-  if (!existing) return res.status(404).json({ error: `No collection found for ${farmerCode} on ${collectedAt}` });
+  if (!existing) return res.status(404).json({ error: `No collection found for ${farmer.name} (${farmer.code}) on ${collectedAt}` });
 
+  // REPLACE the litres value
   const updated = await prisma.milkCollection.update({
     where: { id: existing.id },
     data: { litres: Number(litres) },
@@ -123,10 +131,15 @@ router.post('/manual', authorize('ADMIN', 'OFFICE'), async (req: any, res) => {
   if (!farmerCode || !litres) return res.status(400).json({ error: 'farmerCode and litres are required' });
 
   const farmer = await prisma.farmer.findFirst({
-    where: { code: farmerCode.toUpperCase() },
+    where: {
+      OR: [
+        { code: farmerCode.toUpperCase() },
+        { name: { contains: farmerCode, mode: 'insensitive' } },
+      ]
+    },
     include: { route: { select: { id: true, supervisorId: true } } },
   });
-  if (!farmer) return res.status(404).json({ error: `Farmer ${farmerCode} not found` });
+  if (!farmer) return res.status(404).json({ error: `Farmer "${farmerCode}" not found` });
 
   const rId = routeId ? Number(routeId) : farmer.routeId;
   // Get supervisorId (grader) from route — required field
@@ -152,45 +165,72 @@ router.post('/manual', authorize('ADMIN', 'OFFICE'), async (req: any, res) => {
   res.status(201).json(collection);
 });
 
-// POST /api/collections/advance/correct — record advance or b/f correction
+// POST /api/collections/advance/correct — REPLACE advance or b/f (not add)
 router.post('/advance/correct', authorize('ADMIN', 'OFFICE'), async (req, res) => {
   const { farmerId, farmerCode, amount, notes, advanceDate } = req.body;
   let fId = farmerId;
   if (!fId && farmerCode) {
-    const farmer = await prisma.farmer.findFirst({ where: { code: farmerCode.toUpperCase() } });
-    if (!farmer) return res.status(404).json({ error: `Farmer ${farmerCode} not found` });
+    const farmer = await prisma.farmer.findFirst({
+      where: {
+        OR: [
+          { code: farmerCode.toUpperCase() },
+          { name: { contains: farmerCode, mode: 'insensitive' } },
+        ]
+      }
+    });
+    if (!farmer) return res.status(404).json({ error: `Farmer "${farmerCode}" not found` });
     fId = farmer.id;
   }
-  if (!fId) return res.status(400).json({ error: 'Farmer code required' });
+  if (!fId) return res.status(400).json({ error: 'Farmer code or name required' });
 
   const isBfCorrection = notes?.toLowerCase().includes('b/f');
+  const now = new Date();
+  const m = now.getMonth() + 1;
+  const y = now.getFullYear();
 
   if (isBfCorrection) {
-    // Save as FarmerDeduction for b/f
+    // DELETE all existing b/f deductions for this farmer this month, then create fresh
+    await prisma.farmerDeduction.deleteMany({
+      where: {
+        farmerId: Number(fId),
+        periodMonth: m, periodYear: y,
+        reason: { contains: 'B/f' },
+      },
+    });
     const result = await prisma.farmerDeduction.create({
       data: {
         farmerId:      Number(fId),
         amount:        Number(amount),
         reason:        notes || 'B/f correction',
-        deductionDate: new Date(),
-        periodMonth:   new Date().getMonth() + 1,
-        periodYear:    new Date().getFullYear(),
+        deductionDate: now,
+        periodMonth:   m,
+        periodYear:    y,
       },
       include: { farmer: { select: { code: true, name: true } } },
     });
-    res.status(201).json({ ...result, type: 'bf_correction' });
+    res.status(201).json({ ...result, type: 'bf_correction', replaced: true });
   } else {
-    // Save as FarmerAdvance for advance correction
+    // REPLACE advance for this specific date — delete existing for that day then create
+    if (advanceDate) {
+      const advDay = new Date(advanceDate); advDay.setHours(0,0,0,0);
+      const advDayEnd = new Date(advanceDate); advDayEnd.setHours(23,59,59,999);
+      await prisma.farmerAdvance.deleteMany({
+        where: {
+          farmerId: Number(fId),
+          advanceDate: { gte: advDay, lte: advDayEnd },
+        },
+      });
+    }
     const result = await prisma.farmerAdvance.create({
       data: {
         farmerId:    Number(fId),
         amount:      Number(amount),
-        advanceDate: advanceDate ? new Date(advanceDate) : new Date(),
+        advanceDate: advanceDate ? new Date(advanceDate) : now,
         notes:       notes || 'Office advance correction',
       },
       include: { farmer: { select: { code: true, name: true } } },
     });
-    res.status(201).json({ ...result, type: 'advance' });
+    res.status(201).json({ ...result, type: 'advance', replaced: true });
   }
 });
 

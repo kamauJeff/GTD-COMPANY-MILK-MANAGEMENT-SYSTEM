@@ -285,7 +285,7 @@ export default function CollectionsPage() {
                     Record a missed or backdated collection for any farmer
                   </div>
                   {[
-                    { label: 'Farmer Code *', key: 'farmerCode', placeholder: 'e.g. FM0001', upper: true },
+                    { label: 'Farmer Code or Name *', key: 'farmerCode', placeholder: 'FM0001 or John Kamau', upper: false },
                     { label: 'Litres *', key: 'litres', placeholder: '0.0', type: 'number' },
                   ].map(({ label, key, placeholder, upper, type }) => (
                     <div key={key}>
@@ -332,9 +332,9 @@ export default function CollectionsPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Farmer Code *</label>
-                      <input value={correctForm.id} onChange={e => setCorrectForm(f => ({...f, id: e.target.value.toUpperCase()}))}
-                        placeholder="e.g. FM0001" className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100" />
+                      <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Farmer Code or Name *</label>
+                      <input value={correctForm.id} onChange={e => setCorrectForm(f => ({...f, id: e.target.value}))}
+                        placeholder="e.g. FM0001 or John Kamau" className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100" />
                     </div>
                     <div>
                       <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Date of Collection *</label>
@@ -362,10 +362,10 @@ export default function CollectionsPage() {
                     Correct b/f balance or record/correct an advance for a specific disbursement date.
                   </div>
                   <div>
-                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Farmer Code *</label>
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Farmer Code or Name *</label>
                     <input value={advanceForm.farmerCode}
-                      onChange={e => setAdvanceForm(f => ({...f, farmerCode: e.target.value.toUpperCase()}))}
-                      placeholder="e.g. FM0001" className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100" />
+                      onChange={e => setAdvanceForm(f => ({...f, farmerCode: e.target.value}))}
+                      placeholder="e.g. FM0001 or John Kamau" className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100" />
                   </div>
                   <div>
                     <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Type</label>

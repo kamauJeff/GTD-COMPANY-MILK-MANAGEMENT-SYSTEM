@@ -62,13 +62,17 @@ router.put('/me', async (req: any, res) => {
 
 // PUT change password
 router.put('/me/password', async (req: any, res) => {
-  const bcrypt = await import('bcryptjs');
   const { current, newPassword } = req.body;
+  if (!current || !newPassword) return res.status(400).json({ error: 'Both current and new password are required' });
+  if (newPassword.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+
   const employee = await prisma.employee.findUnique({ where: { id: req.user.id } });
-  if (!employee) return res.status(404).json({ error: 'Not found' });
+  if (!employee) return res.status(404).json({ error: 'Employee not found' });
+
   const valid = await bcrypt.compare(current, employee.passwordHash);
   if (!valid) return res.status(400).json({ error: 'Current password is incorrect' });
+
   const hash = await bcrypt.hash(newPassword, 10);
   await prisma.employee.update({ where: { id: req.user.id }, data: { passwordHash: hash } });
-  res.json({ success: true });
+  res.json({ success: true, message: 'Password changed successfully' });
 });

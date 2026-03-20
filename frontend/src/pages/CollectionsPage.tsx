@@ -381,7 +381,7 @@ export default function CollectionsPage() {
                   <div>
                     <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Advance Date (for advance corrections)</label>
                     <div className="flex gap-2 flex-wrap">
-                      {[5,10,15,20,25].map(d => {
+                      {[5,10,20,25].map(d => {
                         const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
                         return (
                           <button key={d} onClick={() => setAdvanceForm(f => ({...f, notes: `Advance ${d}th correction`}))}

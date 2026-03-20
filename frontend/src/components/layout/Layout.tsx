@@ -5,7 +5,7 @@ import { useThemeStore } from '../../store/theme.store';
 import {
   LayoutDashboard, Users, Route, Milk, Factory, Store,
   CreditCard, Briefcase, BarChart2, LogOut, Sparkles, Droplets,
-  Menu, X, Moon, Sun, Wifi, WifiOff, RefreshCw, UserCircle
+  Menu, X, Moon, Sun, Wifi, WifiOff, RefreshCw, UserCircle, DollarSign
 } from 'lucide-react';
 import { AIWidget } from '../AIWidget';
 import { ToastContainer } from '../Toast';
@@ -18,6 +18,7 @@ const NAV = [
   { to: '/collections', icon: Milk,            label: 'Collections',                 roles: ['ADMIN','OFFICE','GRADER'] },
   { to: '/factory',     icon: Factory,         label: 'Factory',                     roles: ['ADMIN','OFFICE'] },
   { to: '/litres',      icon: Droplets,        label: 'Litres Ledger',               roles: ['ADMIN','OFFICE'] },
+  { to: '/advances',    icon: DollarSign,      label: 'Advances',                    roles: ['ADMIN','OFFICE'] },
   { to: '/shops',       icon: Store,           label: 'Shops & Sales',               roles: ['ADMIN','OFFICE','SHOPKEEPER','DRIVER'] },
   { to: '/payments',    icon: CreditCard,      label: 'Farmer Payments',             roles: ['ADMIN'] },
   { to: '/payroll',     icon: Briefcase,       label: 'Staff Payroll',               roles: ['ADMIN'] },

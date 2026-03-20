@@ -302,7 +302,7 @@ export async function getJournalGridFull(req: Request, res: Response) {
   const y = Number(year)  || new Date().getFullYear();
   const start = new Date(y, m - 1, 1);
   const end   = new Date(y, m, 1);
-  const ADVANCE_DATES = [5, 10, 15, 20, 25]; // advance disbursement days
+  const ADVANCE_DATES = [5, 10, 20, 25]; // advance disbursement days (15th is payment day, not advance)
 
   const where: any = { collectedAt: { gte: start, lt: end } };
   if (routeId) where.routeId = Number(routeId);
@@ -332,7 +332,7 @@ export async function getJournalGridFull(req: Request, res: Response) {
         id: fid, code: c.farmer.code, name: c.farmer.name,
         pricePerLitre: Number(c.farmer.pricePerLitre),
         route: c.route, days: {}, total: 0,
-        advances: { 5: 0, 10: 0, 15: 0, 20: 0, 25: 0 },
+        advances: { 5: 0, 10: 0, 20: 0, 25: 0 },
         totalAdvances: 0, bfBalance: 0,
       };
     }
@@ -353,29 +353,52 @@ export async function getJournalGridFull(req: Request, res: Response) {
     farmerMap[fid].totalAdvances += Number(adv.amount);
   }
 
-  // Get previous month negative balances as B/f
+  // Get b/f: from previous month negative payments OR current month deductions marked as b/f corrections
   const prevMonth = m === 1 ? 12 : m - 1;
   const prevYear  = m === 1 ? y - 1 : y;
-  const prevPayments = await prisma.farmerPayment.findMany({
-    where: { periodMonth: prevMonth, periodYear: prevYear, netPay: { lt: 0 }, status: 'PAID' },
-    select: { farmerId: true, netPay: true },
-  });
+
+  const [prevPayments, bfDeductions] = await Promise.all([
+    prisma.farmerPayment.findMany({
+      where: { periodMonth: prevMonth, periodYear: prevYear, netPay: { lt: 0 }, status: 'PAID' },
+      select: { farmerId: true, netPay: true },
+    }),
+    prisma.farmerDeduction.findMany({
+      where: {
+        periodMonth: m, periodYear: y,
+        reason: { contains: 'B/f' },
+      },
+      select: { farmerId: true, amount: true },
+    }),
+  ]);
+
   for (const pp of prevPayments) {
     if (farmerMap[pp.farmerId]) {
       farmerMap[pp.farmerId].bfBalance = Math.abs(Number(pp.netPay));
     }
   }
+  // Overlay b/f corrections (office adjustments)
+  for (const d of bfDeductions) {
+    if (farmerMap[d.farmerId]) {
+      farmerMap[d.farmerId].bfBalance = (farmerMap[d.farmerId].bfBalance || 0) + Number(d.amount);
+    } else {
+      // Farmer may have no collections but has b/f
+      farmerMap[d.farmerId] = {
+        id: d.farmerId, code: '', name: '', pricePerLitre: 46, route: null,
+        days: {}, total: 0, advances: { 5: 0, 10: 0, 20: 0, 25: 0 }, totalAdvances: 0, bfBalance: Number(d.amount),
+      };
+    }
+  }
 
   // Compute derived fields
-  const farmers = Object.values(farmerMap).sort((a, b) => a.name.localeCompare(b.name));
-  for (const f of farmers) {
+  const farmers = Object.values(farmerMap).sort((a: any, b: any) => a.name.localeCompare(b.name));
+  for (const f of farmers as any[]) {
     const total15 = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15].reduce((s, d) => s + (f.days[d] || 0), 0);
     f.total15     = total15;
     f.totalLitres = f.total;
     f.totalMoney  = f.total * f.pricePerLitre;
     f.amtPayable  = f.totalMoney - f.totalAdvances - f.bfBalance;
     f.midTM       = total15 * f.pricePerLitre;
-    f.midPayable  = f.midTM - f.advances[5] - f.advances[10] - f.advances[15];
+    f.midPayable  = f.midTM - (f.advances[5] || 0) - (f.advances[10] || 0);
   }
 
   const dayTotals: Record<number, number> = {};

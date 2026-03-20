@@ -118,27 +118,34 @@ router.delete('/:id', authorize('ADMIN'), async (req, res) => {
 });
 
 // POST /api/collections/manual — manual entry by office for a farmer
-router.post('/manual', authorize('ADMIN', 'OFFICE'), async (req, res) => {
-  const { farmerId, farmerCode, routeId, litres, collectedAt, graderId } = req.body;
-  let fId = farmerId;
-  if (!fId && farmerCode) {
-    const farmer = await prisma.farmer.findFirst({ where: { code: farmerCode.toUpperCase() } });
-    if (!farmer) return res.status(404).json({ error: `Farmer ${farmerCode} not found` });
-    fId = farmer.id;
-  }
-  const farmer = await prisma.farmer.findUnique({
-    where: { id: Number(fId) },
-    include: { route: { select: { id: true } } },
+router.post('/manual', authorize('ADMIN', 'OFFICE'), async (req: any, res) => {
+  const { farmerCode, routeId, litres, collectedAt } = req.body;
+  if (!farmerCode || !litres) return res.status(400).json({ error: 'farmerCode and litres are required' });
+
+  const farmer = await prisma.farmer.findFirst({
+    where: { code: farmerCode.toUpperCase() },
+    include: { route: { select: { id: true, supervisorId: true } } },
   });
-  if (!farmer) return res.status(404).json({ error: 'Farmer not found' });
+  if (!farmer) return res.status(404).json({ error: `Farmer ${farmerCode} not found` });
+
+  const rId = routeId ? Number(routeId) : farmer.routeId;
+  // Get supervisorId (grader) from route — required field
+  let gId = farmer.route?.supervisorId;
+  if (!gId) {
+    const route = await prisma.route.findUnique({ where: { id: rId }, select: { supervisorId: true } });
+    gId = route?.supervisorId;
+  }
+  // Fallback: use the logged-in user if they are a grader/admin
+  if (!gId) gId = req.user?.sub || req.user?.id;
+  if (!gId) return res.status(400).json({ error: 'No grader assigned to this route. Assign a grader first.' });
 
   const collection = await prisma.milkCollection.create({
     data: {
-      farmerId:    Number(fId),
-      routeId:     routeId ? Number(routeId) : (farmer.route?.id || farmer.routeId),
-      graderId:    graderId ? Number(graderId) : null,
+      farmerId:    farmer.id,
+      routeId:     rId,
+      graderId:    Number(gId),
       litres:      Number(litres),
-      collectedAt: collectedAt ? new Date(collectedAt) : new Date(),
+      collectedAt: collectedAt ? new Date(collectedAt + 'T08:00:00') : new Date(),
     },
     include: { farmer: { select: { code: true, name: true } }, route: { select: { name: true } } },
   });
@@ -185,4 +192,18 @@ router.post('/advance/correct', authorize('ADMIN', 'OFFICE'), async (req, res) =
     });
     res.status(201).json({ ...result, type: 'advance' });
   }
+});
+
+// GET /api/collections/deductions — list deductions
+router.get('/deductions', async (req, res) => {
+  const { month, year, routeId } = req.query;
+  const m = Number(month); const y = Number(year);
+  const where: any = { periodMonth: m, periodYear: y };
+  if (routeId) where.farmer = { routeId: Number(routeId) };
+  const deductions = await prisma.farmerDeduction.findMany({
+    where,
+    include: { farmer: { include: { route: { select: { name: true } } } } },
+    orderBy: { deductionDate: 'desc' },
+  });
+  res.json(deductions);
 });

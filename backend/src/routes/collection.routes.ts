@@ -70,9 +70,36 @@ router.get('/statement', async (req, res) => {
   });
 });
 
-// PUT /api/collections/:id — correct a collection (office only)
-router.put('/:id', authorize('ADMIN', 'OFFICE'), async (req, res) => {
-  const { litres, collectedAt, notes } = req.body;
+// PUT /api/collections/correct-by-farmer — correct by farmer code + date
+router.put('/correct-by-farmer', authorize('ADMIN', 'OFFICE'), async (req, res) => {
+  const { farmerCode, collectedAt, litres } = req.body;
+  if (!farmerCode || !collectedAt || !litres) return res.status(400).json({ error: 'farmerCode, collectedAt and litres are required' });
+
+  const farmer = await prisma.farmer.findFirst({ where: { code: farmerCode.toUpperCase() } });
+  if (!farmer) return res.status(404).json({ error: `Farmer ${farmerCode} not found` });
+
+  const dayStart = new Date(collectedAt); dayStart.setHours(0,0,0,0);
+  const dayEnd   = new Date(collectedAt); dayEnd.setHours(23,59,59,999);
+
+  // Find the most recent collection for this farmer on that date
+  const existing = await prisma.milkCollection.findFirst({
+    where: { farmerId: farmer.id, collectedAt: { gte: dayStart, lte: dayEnd } },
+    orderBy: { collectedAt: 'desc' },
+  });
+
+  if (!existing) return res.status(404).json({ error: `No collection found for ${farmerCode} on ${collectedAt}` });
+
+  const updated = await prisma.milkCollection.update({
+    where: { id: existing.id },
+    data: { litres: Number(litres) },
+    include: { farmer: { select: { code: true, name: true } }, route: { select: { name: true } } },
+  });
+  res.json({ ...updated, previousLitres: Number(existing.litres), corrected: true });
+});
+
+// PUT /api/collections/:id — correct by ID (admin)
+router.put('/:id', authorize('ADMIN'), async (req, res) => {
+  const { litres, collectedAt } = req.body;
   const collection = await prisma.milkCollection.update({
     where: { id: Number(req.params.id) },
     data: {
@@ -118,26 +145,44 @@ router.post('/manual', authorize('ADMIN', 'OFFICE'), async (req, res) => {
   res.status(201).json(collection);
 });
 
-// POST /api/collections/advance/correct — correct a b/f balance
+// POST /api/collections/advance/correct — record advance or b/f correction
 router.post('/advance/correct', authorize('ADMIN', 'OFFICE'), async (req, res) => {
-  const { farmerId, farmerCode, amount, notes } = req.body;
+  const { farmerId, farmerCode, amount, notes, advanceDate } = req.body;
   let fId = farmerId;
   if (!fId && farmerCode) {
     const farmer = await prisma.farmer.findFirst({ where: { code: farmerCode.toUpperCase() } });
     if (!farmer) return res.status(404).json({ error: `Farmer ${farmerCode} not found` });
     fId = farmer.id;
   }
-  // Record as a deduction correction (negative amount = b/f reduction)
-  const deduction = await prisma.farmerDeduction.create({
-    data: {
-      farmerId:      Number(fId),
-      amount:        Number(amount),
-      reason:        `B/f correction: ${notes || 'Office adjustment'}`,
-      deductionDate: new Date(),
-      periodMonth:   new Date().getMonth() + 1,
-      periodYear:    new Date().getFullYear(),
-    },
-    include: { farmer: { select: { code: true, name: true } } },
-  });
-  res.status(201).json(deduction);
+  if (!fId) return res.status(400).json({ error: 'Farmer code required' });
+
+  const isBfCorrection = notes?.toLowerCase().includes('b/f');
+
+  if (isBfCorrection) {
+    // Save as FarmerDeduction for b/f
+    const result = await prisma.farmerDeduction.create({
+      data: {
+        farmerId:      Number(fId),
+        amount:        Number(amount),
+        reason:        notes || 'B/f correction',
+        deductionDate: new Date(),
+        periodMonth:   new Date().getMonth() + 1,
+        periodYear:    new Date().getFullYear(),
+      },
+      include: { farmer: { select: { code: true, name: true } } },
+    });
+    res.status(201).json({ ...result, type: 'bf_correction' });
+  } else {
+    // Save as FarmerAdvance for advance correction
+    const result = await prisma.farmerAdvance.create({
+      data: {
+        farmerId:    Number(fId),
+        amount:      Number(amount),
+        advanceDate: advanceDate ? new Date(advanceDate) : new Date(),
+        notes:       notes || 'Office advance correction',
+      },
+      include: { farmer: { select: { code: true, name: true } } },
+    });
+    res.status(201).json({ ...result, type: 'advance' });
+  }
 });

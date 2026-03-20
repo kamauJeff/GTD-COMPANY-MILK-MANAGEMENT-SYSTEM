@@ -29,14 +29,20 @@ export default function CollectionsPage() {
   });
 
   const correctMut = useMutation({
-    mutationFn: () => api.put(`/api/collections/${correctForm.id}`, { litres: Number(correctForm.litres), collectedAt: correctForm.collectedAt || undefined }),
-    onSuccess: () => { showSuccess('Collection corrected'); qc.invalidateQueries({ queryKey: ['collection-journal'] }); setCorrectForm({ id: '', litres: '', collectedAt: '' }); },
-    onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
+    mutationFn: () => api.put('/api/collections/correct-by-farmer', { farmerCode: correctForm.id, collectedAt: correctForm.collectedAt, litres: Number(correctForm.litres) }),
+    onSuccess: (r) => { showSuccess(`Corrected: ${r.data.farmer?.name} → ${correctForm.litres} L`, `Was: ${r.data.previousLitres} L`); qc.invalidateQueries({ queryKey: ['collection-journal'] }); setCorrectForm({ id: '', litres: '', collectedAt: '' }); },
+    onError: (e: any) => showError(e?.response?.data?.error || 'Record not found'),
   });
 
   const advanceMut = useMutation({
-    mutationFn: () => api.post('/api/collections/advance/correct', advanceForm),
-    onSuccess: () => { showSuccess('B/f correction recorded'); qc.invalidateQueries({ queryKey: ['collection-journal'] }); setAdvanceForm({ farmerCode: '', amount: '', notes: '' }); },
+    mutationFn: () => {
+      // Extract advance date from notes if it contains a specific date
+      const advDayMatch = advanceForm.notes.match(/Advance (\d+)th/);
+      const advDay = advDayMatch ? Number(advDayMatch[1]) : null;
+      const advanceDate = advDay ? `${year}-${String(month).padStart(2,'0')}-${String(advDay).padStart(2,'0')}` : undefined;
+      return api.post('/api/collections/advance/correct', { ...advanceForm, advanceDate });
+    },
+    onSuccess: (r) => { showSuccess(`${r.data.type === 'bf_correction' ? 'B/f correction' : 'Advance'} recorded for ${r.data.farmer?.name}`); qc.invalidateQueries({ queryKey: ['collection-journal'] }); setAdvanceForm({ farmerCode: '', amount: '', notes: '' }); },
     onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
   });
 
@@ -81,6 +87,8 @@ export default function CollectionsPage() {
   // Day column total
   const getDayTotal = (day: number) => filtered.reduce((s, f) => s + (f.days[day] || 0), 0);
   const getMid15Total = () => filtered.reduce((s, f) => s + getTotal15(f), 0);
+  const getGrandNegatives = () => filtered.filter(f => (f.amtPayable || 0) < 0).length;
+  const getGrandNegativeTotal = () => filtered.filter(f => (f.amtPayable || 0) < 0).reduce((s, f) => s + (f.amtPayable || 0), 0);
   const getGrandTotal = () => filtered.reduce((s, f) => s + getTotalLitres(f), 0);
   const getGrandMoney = () => filtered.reduce((s, f) => s + getTotalMoney(f), 0);
 
@@ -320,34 +328,38 @@ export default function CollectionsPage() {
                 <>
                   <div className="p-3 bg-orange-50 dark:bg-orange-900/20 rounded-xl text-xs text-orange-700 dark:text-orange-300 flex gap-2">
                     <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
-                    Fix incorrect litres on an existing record. Find the Collection ID from the database or ask IT.
+                    Search for the wrong record by farmer code/name and date, then correct the litres.
                   </div>
-                  <div>
-                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Collection ID *</label>
-                    <input type="number" value={correctForm.id}
-                      onChange={e => setCorrectForm(f => ({...f, id: e.target.value}))}
-                      placeholder="e.g. 42" className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100 font-mono" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Farmer Code *</label>
+                      <input value={correctForm.id} onChange={e => setCorrectForm(f => ({...f, id: e.target.value.toUpperCase()}))}
+                        placeholder="e.g. FM0001" className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Date of Collection *</label>
+                      <input type="date" value={correctForm.collectedAt} onChange={e => setCorrectForm(f => ({...f, collectedAt: e.target.value}))}
+                        className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100" />
+                    </div>
                   </div>
                   <div>
                     <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Corrected Litres *</label>
-                    <input type="number" value={correctForm.litres}
-                      onChange={e => setCorrectForm(f => ({...f, litres: e.target.value}))}
-                      placeholder="Correct value e.g. 30"
-                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100" />
+                    <input type="number" value={correctForm.litres} onChange={e => setCorrectForm(f => ({...f, litres: e.target.value}))}
+                      placeholder="e.g. 30 (not 300)" className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100 font-mono text-lg" />
                   </div>
-                  <button onClick={() => correctMut.mutate()} disabled={!correctForm.id || !correctForm.litres || correctMut.isPending}
+                  <button onClick={() => correctMut.mutate()} disabled={!correctForm.id || !correctForm.litres || !correctForm.collectedAt || correctMut.isPending}
                     className="w-full py-3 bg-orange-600 text-white rounded-xl font-medium hover:bg-orange-700 disabled:opacity-50 text-sm">
                     {correctMut.isPending ? 'Correcting...' : 'Correct Record'}
                   </button>
                 </>
               )}
 
-              {/* Adjust B/f */}
+              {/* Adjust B/f or Advance */}
               {correctionTab === 'advance' && (
                 <>
                   <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl text-xs text-purple-700 dark:text-purple-300 flex gap-2">
                     <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
-                    Correct an incorrect carried-forward balance (b/f) for a farmer. Positive amount = add to deductions, negative = reduce deductions.
+                    Correct b/f balance or record/correct an advance for a specific disbursement date.
                   </div>
                   <div>
                     <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Farmer Code *</label>
@@ -356,21 +368,46 @@ export default function CollectionsPage() {
                       placeholder="e.g. FM0001" className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100" />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Adjustment Amount (KES) *</label>
-                    <input type="number" value={advanceForm.amount}
-                      onChange={e => setAdvanceForm(f => ({...f, amount: e.target.value}))}
-                      placeholder="e.g. 500 or -500" className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100 font-mono" />
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Type</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[['bf', 'B/f Correction'],['advance', 'Advance Correction']].map(([v,l]) => (
+                        <button key={v} onClick={() => setAdvanceForm(f => ({...f, notes: v === 'bf' ? 'B/f correction' : ''}))}
+                          className={`py-2 rounded-xl text-xs font-medium border transition-all ${advanceForm.notes?.startsWith('B/f') || (v === 'advance' && !advanceForm.notes?.startsWith('B/f')) ? (v === 'bf' && advanceForm.notes?.startsWith('B/f') ? 'bg-purple-600 text-white border-purple-600' : v === 'advance' && !advanceForm.notes?.startsWith('B/f') ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300') : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300'}`}>
+                          {l}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Reason *</label>
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Advance Date (for advance corrections)</label>
+                    <div className="flex gap-2 flex-wrap">
+                      {[5,10,15,20,25].map(d => {
+                        const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                        return (
+                          <button key={d} onClick={() => setAdvanceForm(f => ({...f, notes: `Advance ${d}th correction`}))}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${advanceForm.notes === `Advance ${d}th correction` ? 'bg-orange-600 text-white border-orange-600' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+                            {d}th
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Amount (KES) — negative to reduce *</label>
+                    <input type="number" value={advanceForm.amount}
+                      onChange={e => setAdvanceForm(f => ({...f, amount: e.target.value}))}
+                      placeholder="e.g. 500 to add, -500 to reduce" className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100 font-mono text-lg" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Notes *</label>
                     <input value={advanceForm.notes}
                       onChange={e => setAdvanceForm(f => ({...f, notes: e.target.value}))}
-                      placeholder="e.g. Wrong b/f entered last month"
+                      placeholder="Reason for adjustment"
                       className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100" />
                   </div>
                   <button onClick={() => advanceMut.mutate()} disabled={!advanceForm.farmerCode || !advanceForm.amount || !advanceForm.notes || advanceMut.isPending}
                     className="w-full py-3 bg-purple-600 text-white rounded-xl font-medium hover:bg-purple-700 disabled:opacity-50 text-sm">
-                    {advanceMut.isPending ? 'Saving...' : 'Save Adjustment'}
+                    {advanceMut.isPending ? 'Saving...' : 'Save Correction'}
                   </button>
                 </>
               )}

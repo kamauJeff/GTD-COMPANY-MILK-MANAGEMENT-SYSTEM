@@ -1,5 +1,5 @@
 // src/screens/HistoryScreen.tsx
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, RefreshControl,
   TouchableOpacity, ActivityIndicator,
@@ -17,14 +17,7 @@ export default function HistoryScreen({ employee, onBack }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing]       = useState(false);
   const [showStatement, setShowStatement] = useState<{ farmerCode: string; month: number; year: number } | null>(null);
-
   const now = new Date();
-
-export default function HistoryScreen({ employee, onBack }: Props) {
-  const [records, setRecords]     = useState<any[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [syncing, setSyncing]     = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -34,7 +27,7 @@ export default function HistoryScreen({ employee, onBack }: Props) {
     setLoading(false);
   }, []);
 
-  React.useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -49,7 +42,7 @@ export default function HistoryScreen({ employee, onBack }: Props) {
     setSyncing(false);
   }
 
-  const totalLitres = records.reduce((s, r) => s + r.litres, 0);
+  const totalLitres = records.reduce((s, r) => s + Number(r.litres), 0);
   const pendingRows = records.filter(r => r.synced === 0);
   const syncedRows  = records.filter(r => r.synced === 1);
   const today = new Date().toLocaleDateString('en-KE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -64,6 +57,7 @@ export default function HistoryScreen({ employee, onBack }: Props) {
           onClose={() => setShowStatement(null)}
         />
       )}
+
       {/* Header */}
       <View style={s.header}>
         <TouchableOpacity style={s.backBtn} onPress={onBack}>
@@ -115,19 +109,23 @@ export default function HistoryScreen({ employee, onBack }: Props) {
               </View>
             </View>
 
-            {/* Pending */}
             {pendingRows.length > 0 && (
               <>
                 <Text style={s.groupLabel}>⏳ PENDING SYNC ({pendingRows.length})</Text>
-                {pendingRows.map(r => <RecordRow key={r.id} record={r} onStatement={(code: string) => setShowStatement({ farmerCode: code, month: now.getMonth()+1, year: now.getFullYear() })} />)}
+                {pendingRows.map(r => (
+                  <RecordRow key={r.id} record={r}
+                    onStatement={(code: string) => setShowStatement({ farmerCode: code, month: now.getMonth()+1, year: now.getFullYear() })} />
+                ))}
               </>
             )}
 
-            {/* Synced */}
             {syncedRows.length > 0 && (
               <>
                 <Text style={[s.groupLabel, { marginTop: 16 }]}>✓ SYNCED ({syncedRows.length})</Text>
-                {syncedRows.map(r => <RecordRow key={r.id} record={r} synced onStatement={(code: string) => setShowStatement({ farmerCode: code, month: now.getMonth()+1, year: now.getFullYear() })} />)}
+                {syncedRows.map(r => (
+                  <RecordRow key={r.id} record={r} synced
+                    onStatement={(code: string) => setShowStatement({ farmerCode: code, month: now.getMonth()+1, year: now.getFullYear() })} />
+                ))}
               </>
             )}
           </>
@@ -140,23 +138,26 @@ export default function HistoryScreen({ employee, onBack }: Props) {
 }
 
 function RecordRow({ record, synced, onStatement }: { record: any; synced?: boolean; onStatement?: (code: string) => void }) {
-  const time = new Date(record.collected_at || record.collectedAt).toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' });
+  const dt = record.collected_at || record.collectedAt || new Date().toISOString();
+  const time = new Date(dt).toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' });
   const farmerCode = record.farmer_code || record.farmerCode || '';
+  const farmerName = record.farmer_name || `Farmer #${record.farmer_id || record.farmerId}`;
   return (
     <View style={[rs.row, synced && rs.rowSynced]}>
       <View style={rs.timeWrap}>
         <Text style={rs.time}>{time}</Text>
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={rs.farmerName}>{record.farmer_name ?? `Farmer #${record.farmer_id}`}</Text>
-        <Text style={rs.status}>{synced ? '✓ Uploaded' : '⏳ Pending'}</Text>
+        <Text style={rs.farmerName}>{farmerName}</Text>
+        {farmerCode ? <Text style={rs.code}>{farmerCode}</Text> : null}
+        <Text style={rs.status}>{synced ? '✓ Uploaded' : '⏳ Pending sync'}</Text>
       </View>
-      <View style={{ alignItems: 'flex-end', gap: 4 }}>
+      <View style={{ alignItems: 'flex-end', gap: 6 }}>
         <Text style={rs.litres}>{Number(record.litres).toFixed(1)}L</Text>
         {synced && farmerCode && onStatement && (
           <TouchableOpacity onPress={() => onStatement(farmerCode)}
             style={{ backgroundColor: '#0a1e10', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: '#1e4d2a' }}>
-            <Text style={{ color: '#3ddc84', fontSize: 9, fontWeight: '700' }}>📄 STMT</Text>
+            <Text style={{ color: '#3ddc84', fontSize: 9, fontWeight: '700' }}>📄 STATEMENT</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -198,9 +199,7 @@ const rs = StyleSheet.create({
   timeWrap:   { width: 46 },
   time:       { fontSize: 12, color: '#4a7090', fontWeight: '600' },
   farmerName: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  code:       { color: '#4a7090', fontSize: 11, marginTop: 1 },
   status:     { fontSize: 11, color: '#4a7090', marginTop: 2 },
   litres:     { color: GREEN, fontWeight: '900', fontSize: 16 },
 });
-
-const CARD2   = '#132d48';
-const BORDER2 = '#1e3d5c';

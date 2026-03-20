@@ -44,18 +44,18 @@ export default router;
 router.get('/me', async (req: any, res) => {
   const employee = await prisma.employee.findUnique({
     where: { id: req.user.id },
-    select: { id: true, code: true, name: true, phone: true, email: true, role: true, routeId: true },
+    select: { id: true, code: true, name: true, phone: true, role: true },
   });
   res.json(employee);
 });
 
 // PUT update my profile
 router.put('/me', async (req: any, res) => {
-  const { name, phone, email } = req.body;
+  const { name, phone } = req.body;
   const employee = await prisma.employee.update({
     where: { id: req.user.id },
-    data: { ...(name ? { name } : {}), ...(phone ? { phone } : {}), ...(email !== undefined ? { email } : {}) },
-    select: { id: true, code: true, name: true, phone: true, email: true, role: true },
+    data: { ...(name ? { name } : {}), ...(phone ? { phone } : {}) },
+    select: { id: true, code: true, name: true, phone: true, role: true },
   });
   res.json(employee);
 });

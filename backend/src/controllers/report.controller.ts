@@ -257,27 +257,26 @@ export async function getDailyLedger(req: Request, res: Response) {
   const where: any = { collectedAt: { gte: d, lt: next } };
   if (routeId) where.routeId = Number(routeId);
 
-  const [collections, factoryReceipts] = await Promise.all([
+  const [collectionsRaw, factoryReceipts, routes] = await Promise.all([
     prisma.milkCollection.groupBy({
       by: ['routeId'],
       where,
       _sum: { litres: true },
       _count: { farmerId: true },
-    }),
+    }) as Promise<any[]>,
     prisma.factoryReceipt.groupBy({
       by: ['routeId'],
       where: { receivedAt: { gte: d, lt: next }, ...(routeId ? { routeId: Number(routeId) } : {}) },
       _sum: { litres: true },
-    }).catch(() => []),
+    }).catch(() => []) as Promise<any[]>,
+    prisma.route.findMany({
+      include: { supervisor: { select: { id: true, name: true, code: true } } },
+      orderBy: { code: 'asc' },
+    }),
   ]);
 
-  const routes = await prisma.route.findMany({
-    include: { supervisor: { select: { id: true, name: true, code: true } } },
-    orderBy: { code: 'asc' },
-  });
-
-  const receivedMap = new Map((factoryReceipts as any[]).map((r: any) => [r.routeId, Number(r._sum.litres || 0)]));
-  const collMap = new Map(collections.map(c => [c.routeId, { litres: Number(c._sum.litres || 0), count: c._count.farmerId }]));
+  const receivedMap = new Map((factoryReceipts as any[]).map((r: any) => [r.routeId, Number(r._sum?.litres || 0)]));
+  const collMap = new Map((collectionsRaw as any[]).map((c: any) => [c.routeId, { litres: Number(c._sum?.litres || 0), count: c._count?.farmerId || 0 }]));
 
   const routeData = routes
     .filter(r => collMap.has(r.id) || receivedMap.has(r.id))

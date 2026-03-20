@@ -56,7 +56,7 @@ export default function PaymentsPage() {
     mutationFn: (rId?: number) => api.post('/api/payments/disburse', { month, year, isMidMonth, routeId: rId || routeId || undefined }),
     onSuccess: (r) => {
       const d = r.data;
-      showSuccess('Disbursement complete!\n\nSent: ${d.successful}/${d.total} M-Pesa payments\nFailed: ${d.failed}\nBank transfers: ${d.bankPayments} (download CSV)\n\n${d.failedDetails?.length ? 'Failed:\n' + d.failedDetails.map((f: any) => `${f.phone}: ${f.error}').join('\n') : ''}`);
+      showSuccess(`Sent ${d.successful}/${d.total} M-Pesa`, `Failed: ${d.failed} · Bank: ${d.bankPayments}`);
       qc.invalidateQueries({ queryKey: ['payments-records'] });
       qc.invalidateQueries({ queryKey: ['payments-summary'] });
     },

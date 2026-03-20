@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useAuthStore } from '../store/auth.store';
 import { showSuccess, showError } from '../components/Toast';
-import { User, Lock, Phone, Mail, Save } from 'lucide-react';
+import { User, Lock, Phone, Save } from 'lucide-react';
 
 export default function ProfilePage() {
   const { user } = useAuthStore();
@@ -15,11 +15,11 @@ export default function ProfilePage() {
   });
   const profile = data?.data || {};
 
-  const [form, setForm] = useState({ name: '', phone: '', email: '' });
+  const [form, setForm] = useState({ name: '', phone: '' });
   const [pwForm, setPwForm] = useState({ current: '', newPw: '', confirm: '' });
 
   useState(() => {
-    if (profile.name) setForm({ name: profile.name, phone: profile.phone || '', email: profile.email || '' });
+    if (profile.name) setForm({ name: profile.name, phone: profile.phone || '' });
   });
 
   const updateMut = useMutation({
@@ -54,7 +54,7 @@ export default function ProfilePage() {
           {[
             { label: 'Full Name', key: 'name', icon: User, placeholder: 'Your name' },
             { label: 'Phone Number', key: 'phone', icon: Phone, placeholder: '0712345678' },
-            { label: 'Email', key: 'email', icon: Mail, placeholder: 'email@example.com' },
+        
           ].map(({ label, key, icon: Icon, placeholder }) => (
             <div key={key}>
               <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">{label}</label>

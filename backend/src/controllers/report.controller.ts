@@ -254,29 +254,34 @@ export async function getDailyLedger(req: Request, res: Response) {
   d.setHours(0, 0, 0, 0);
   const next = new Date(d); next.setDate(next.getDate() + 1);
 
-  const where: any = { collectedAt: { gte: d, lt: next } };
-  if (routeId) where.routeId = Number(routeId);
+  const collWhere: any = { collectedAt: { gte: d, lt: next } };
+  if (routeId) collWhere.routeId = Number(routeId);
 
-  const [collectionsRaw, factoryReceipts, routes] = await Promise.all([
-    prisma.milkCollection.groupBy({
-      by: ['routeId'],
-      where,
-      _sum: { litres: true },
-      _count: { farmerId: true },
-    }) as Promise<any[]>,
-    prisma.factoryReceipt.groupBy({
-      by: ['routeId'],
+  // Use findMany instead of groupBy to avoid TypeScript circular type issues
+  const [collections, receipts, routes] = await Promise.all([
+    prisma.milkCollection.findMany({ where: collWhere, select: { routeId: true, litres: true, farmerId: true } }),
+    prisma.factoryReceipt.findMany({
       where: { receivedAt: { gte: d, lt: next }, ...(routeId ? { routeId: Number(routeId) } : {}) },
-      _sum: { litres: true },
-    }).catch(() => []) as Promise<any[]>,
+      select: { routeId: true, litres: true },
+    }).catch(() => [] as { routeId: number; litres: any }[]),
     prisma.route.findMany({
       include: { supervisor: { select: { id: true, name: true, code: true } } },
       orderBy: { code: 'asc' },
     }),
   ]);
 
-  const receivedMap = new Map((factoryReceipts as any[]).map((r: any) => [r.routeId, Number(r._sum?.litres || 0)]));
-  const collMap = new Map((collectionsRaw as any[]).map((c: any) => [c.routeId, { litres: Number(c._sum?.litres || 0), count: c._count?.farmerId || 0 }]));
+  // Build maps manually
+  const collMap = new Map<number, { litres: number; count: number }>();
+  for (const c of collections) {
+    const rid = c.routeId ?? 0;
+    const existing = collMap.get(rid) || { litres: 0, count: 0 };
+    collMap.set(rid, { litres: existing.litres + Number(c.litres), count: existing.count + 1 });
+  }
+  const receivedMap = new Map<number, number>();
+  for (const r of receipts) {
+    const rid = (r as any).routeId ?? 0;
+    receivedMap.set(rid, (receivedMap.get(rid) || 0) + Number((r as any).litres));
+  }
 
   const routeData = routes
     .filter(r => collMap.has(r.id) || receivedMap.has(r.id))

@@ -60,7 +60,7 @@ export default function PaymentsPage() {
       qc.invalidateQueries({ queryKey: ['payments-records'] });
       qc.invalidateQueries({ queryKey: ['payments-summary'] });
     },
-    onError: (e: any) => showError('${e?.response?.data?.error || 'Disbursement failed'}'),
+    onError: (e: any) => showError(e?.response?.data?.error || 'Disbursement failed'),
   });
 
   const { data: balanceData } = useQuery({

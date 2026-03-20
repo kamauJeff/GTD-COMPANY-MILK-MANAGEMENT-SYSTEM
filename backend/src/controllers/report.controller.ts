@@ -246,3 +246,109 @@ export async function getPaymentsReport(req: Request, res: Response) {
 
   res.json({ paidCount: payments.length, totalGross, totalAdvances, totalNet, negativeCount, carriedForward, midMonthCount, endMonthCount });
 }
+
+// Daily litres ledger report
+export async function getDailyLedger(req: Request, res: Response) {
+  const { date, routeId } = req.query;
+  const d = date ? new Date(String(date)) : new Date();
+  d.setHours(0, 0, 0, 0);
+  const next = new Date(d); next.setDate(next.getDate() + 1);
+
+  const where: any = { collectedAt: { gte: d, lt: next } };
+  if (routeId) where.routeId = Number(routeId);
+
+  const [collections, factoryReceipts] = await Promise.all([
+    prisma.milkCollection.groupBy({
+      by: ['routeId'],
+      where,
+      _sum: { litres: true },
+      _count: { farmerId: true },
+    }),
+    prisma.factoryReceipt.groupBy({
+      by: ['routeId'],
+      where: { receivedAt: { gte: d, lt: next }, ...(routeId ? { routeId: Number(routeId) } : {}) },
+      _sum: { litres: true },
+    }).catch(() => []),
+  ]);
+
+  const routes = await prisma.route.findMany({
+    include: { supervisor: { select: { id: true, name: true, code: true } } },
+    orderBy: { code: 'asc' },
+  });
+
+  const receivedMap = new Map((factoryReceipts as any[]).map((r: any) => [r.routeId, Number(r._sum.litres || 0)]));
+  const collMap = new Map(collections.map(c => [c.routeId, { litres: Number(c._sum.litres || 0), count: c._count.farmerId }]));
+
+  const routeData = routes
+    .filter(r => collMap.has(r.id) || receivedMap.has(r.id))
+    .map(r => {
+      const collected = collMap.get(r.id)?.litres || 0;
+      const received  = receivedMap.get(r.id) || 0;
+      return {
+        routeId:     r.id,
+        routeName:   r.name,
+        routeCode:   r.code,
+        graderName:  r.supervisor?.name || '–',
+        farmerCount: collMap.get(r.id)?.count || 0,
+        collected,
+        received,
+        variance:    received - collected,
+      };
+    });
+
+  res.json({
+    date: d.toISOString().split('T')[0],
+    routes: routeData,
+    summary: {
+      totalCollected: routeData.reduce((s, r) => s + r.collected, 0),
+      totalReceived:  routeData.reduce((s, r) => s + r.received, 0),
+      totalVariance:  routeData.reduce((s, r) => s + r.variance, 0),
+      graderCount:    routeData.length,
+    },
+  });
+}
+
+// Monthly shops report
+export async function getShopsReport(req: Request, res: Response) {
+  const month = Number(req.query.month) || new Date().getMonth() + 1;
+  const year  = Number(req.query.year)  || new Date().getFullYear();
+  const start = new Date(year, month - 1, 1);
+  const end   = new Date(year, month, 1);
+
+  const shops = await prisma.shop.findMany({
+    include: { keeper: { select: { id: true, name: true } } },
+    orderBy: { name: 'asc' },
+  });
+
+  const [drops, sales] = await Promise.all([
+    prisma.shopDrop.groupBy({ by: ['shopId'], where: { droppedAt: { gte: start, lt: end } }, _sum: { litres: true } }),
+    prisma.shopSale.groupBy({ by: ['shopId'], where: { saleDate: { gte: start, lt: end } }, _sum: { litresSold: true, cashCollected: true, tillAmount: true } }),
+  ]);
+
+  const dropMap  = new Map(drops.map(d => [d.shopId, Number(d._sum.litres || 0)]));
+  const saleMap  = new Map(sales.map(s => [s.shopId, { sold: Number(s._sum.litresSold || 0), cash: Number(s._sum.cashCollected || 0), till: Number(s._sum.tillAmount || 0) }]));
+
+  const shopsData = shops.map(shop => {
+    const delivered = dropMap.get(shop.id) || 0;
+    const saleData  = saleMap.get(shop.id) || { sold: 0, cash: 0, till: 0 };
+    const expectedRevenue = saleData.sold * 60;
+    const actualRevenue   = saleData.cash + saleData.till;
+    return {
+      shopId: shop.id, shopName: shop.name, keeperName: shop.keeper?.name || '–',
+      delivered, ...saleData,
+      unaccounted: delivered - saleData.sold,
+      expectedRevenue, actualRevenue,
+      revenueVariance: actualRevenue - expectedRevenue,
+    };
+  }).filter(s => s.delivered > 0 || s.sold > 0);
+
+  res.json({
+    shops: shopsData,
+    totals: {
+      delivered: shopsData.reduce((s, r) => s + r.delivered, 0),
+      sold:      shopsData.reduce((s, r) => s + r.sold, 0),
+      cash:      shopsData.reduce((s, r) => s + r.cash, 0),
+      till:      shopsData.reduce((s, r) => s + r.till, 0),
+    },
+  });
+}

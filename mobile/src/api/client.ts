@@ -20,6 +20,7 @@ export const authApi = {
 };
 
 export const farmersApi = {
+  statement:   (params: any) => api.get('/api/collections/statement', { params }),
   list: (params?: any) => api.get('/api/farmers', { params }),
 };
 

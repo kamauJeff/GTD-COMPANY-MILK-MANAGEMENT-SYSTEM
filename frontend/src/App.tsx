@@ -1,4 +1,3 @@
-// src/App.tsx
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/auth.store';
 import Layout from './components/layout/Layout';
@@ -14,6 +13,7 @@ import PayrollPage from './pages/PayrollPage';
 import ReportsPage from './pages/ReportsPage';
 import AIPage from './pages/AIPage';
 import LitresPage from './pages/LitresPage';
+import ProfilePage from './pages/ProfilePage';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const token = useAuthStore((s) => s.token);
@@ -24,25 +24,19 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route
-        path="/"
-        element={
-          <RequireAuth>
-            <Layout />
-          </RequireAuth>
-        }
-      >
+      <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
         <Route index element={<DashboardPage />} />
-        <Route path="farmers" element={<FarmersPage />} />
-        <Route path="routes" element={<RoutesPage />} />
+        <Route path="farmers"     element={<FarmersPage />} />
+        <Route path="routes"      element={<RoutesPage />} />
         <Route path="collections" element={<CollectionsPage />} />
-        <Route path="factory" element={<FactoryPage />} />
-        <Route path="shops" element={<ShopsPage />} />
-        <Route path="payments" element={<PaymentsPage />} />
-        <Route path="payroll" element={<PayrollPage />} />
-        <Route path="reports" element={<ReportsPage />} />
-        <Route path="ai" element={<AIPage />} />
-        <Route path="litres" element={<LitresPage />} />
+        <Route path="factory"     element={<FactoryPage />} />
+        <Route path="litres"      element={<LitresPage />} />
+        <Route path="shops"       element={<ShopsPage />} />
+        <Route path="payments"    element={<PaymentsPage />} />
+        <Route path="payroll"     element={<PayrollPage />} />
+        <Route path="reports"     element={<ReportsPage />} />
+        <Route path="ai"          element={<AIPage />} />
+        <Route path="profile"     element={<ProfilePage />} />
       </Route>
     </Routes>
   );

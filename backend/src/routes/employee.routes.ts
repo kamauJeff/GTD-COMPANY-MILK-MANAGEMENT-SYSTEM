@@ -39,3 +39,36 @@ router.put('/:id', authorize('ADMIN', 'OFFICE'), async (req, res) => {
 });
 
 export default router;
+
+// GET my profile
+router.get('/me', async (req: any, res) => {
+  const employee = await prisma.employee.findUnique({
+    where: { id: req.user.id },
+    select: { id: true, code: true, name: true, phone: true, email: true, role: true, routeId: true },
+  });
+  res.json(employee);
+});
+
+// PUT update my profile
+router.put('/me', async (req: any, res) => {
+  const { name, phone, email } = req.body;
+  const employee = await prisma.employee.update({
+    where: { id: req.user.id },
+    data: { ...(name ? { name } : {}), ...(phone ? { phone } : {}), ...(email !== undefined ? { email } : {}) },
+    select: { id: true, code: true, name: true, phone: true, email: true, role: true },
+  });
+  res.json(employee);
+});
+
+// PUT change password
+router.put('/me/password', async (req: any, res) => {
+  const bcrypt = await import('bcryptjs');
+  const { current, newPassword } = req.body;
+  const employee = await prisma.employee.findUnique({ where: { id: req.user.id } });
+  if (!employee) return res.status(404).json({ error: 'Not found' });
+  const valid = await bcrypt.compare(current, employee.passwordHash);
+  if (!valid) return res.status(400).json({ error: 'Current password is incorrect' });
+  const hash = await bcrypt.hash(newPassword, 10);
+  await prisma.employee.update({ where: { id: req.user.id }, data: { passwordHash: hash } });
+  res.json({ success: true });
+});

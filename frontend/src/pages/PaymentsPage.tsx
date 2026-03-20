@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { showSuccess, showError, showWarning } from '../components/Toast';
 import { Download, CheckCircle, AlertTriangle, ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -55,11 +56,11 @@ export default function PaymentsPage() {
     mutationFn: (rId?: number) => api.post('/api/payments/disburse', { month, year, isMidMonth, routeId: rId || routeId || undefined }),
     onSuccess: (r) => {
       const d = r.data;
-      alert(`✅ Disbursement complete!\n\nSent: ${d.successful}/${d.total} M-Pesa payments\nFailed: ${d.failed}\nBank transfers: ${d.bankPayments} (download CSV)\n\n${d.failedDetails?.length ? 'Failed:\n' + d.failedDetails.map((f: any) => `${f.phone}: ${f.error}`).join('\n') : ''}`);
+      showSuccess('Disbursement complete!\n\nSent: ${d.successful}/${d.total} M-Pesa payments\nFailed: ${d.failed}\nBank transfers: ${d.bankPayments} (download CSV)\n\n${d.failedDetails?.length ? 'Failed:\n' + d.failedDetails.map((f: any) => `${f.phone}: ${f.error}').join('\n') : ''}`);
       qc.invalidateQueries({ queryKey: ['payments-records'] });
       qc.invalidateQueries({ queryKey: ['payments-summary'] });
     },
-    onError: (e: any) => alert(`❌ ${e?.response?.data?.error || 'Disbursement failed'}`),
+    onError: (e: any) => showError('${e?.response?.data?.error || 'Disbursement failed'}'),
   });
 
   const { data: balanceData } = useQuery({
@@ -77,26 +78,26 @@ export default function PaymentsPage() {
 
   const runMut = useMutation({
     mutationFn: () => api.post('/api/payments/run', { month, year, isMidMonth, routeId: routeId || undefined }),
-    onSuccess: (r) => { alert(`✅ ${r.data.message}`); qc.invalidateQueries({ queryKey: ['payments'] }); },
-    onError: (e: any) => alert(e?.response?.data?.error || 'Failed'),
+    onSuccess: (r) => { showSuccess('${r.data.message}'); qc.invalidateQueries({ queryKey: ['payments'] }); },
+    onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
   });
 
   const approveMut = useMutation({
     mutationFn: (rId?: number) => api.post('/api/payments/approve', { month, year, isMidMonth, routeId: rId || routeId || undefined }),
-    onSuccess: (r) => { alert(`✅ ${r.data.approved} payments approved`); qc.invalidateQueries({ queryKey: ['payments'] }); },
-    onError: (e: any) => alert(e?.response?.data?.error || 'Failed'),
+    onSuccess: (r) => { showSuccess('${r.data.approved} payments approved'); qc.invalidateQueries({ queryKey: ['payments'] }); },
+    onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
   });
 
   const markPaidMut = useMutation({
     mutationFn: (ids: number[]) => api.post('/api/payments/mark-paid', { paymentIds: ids }),
-    onSuccess: (r) => { alert(`✅ ${r.data.paid} marked as paid`); qc.invalidateQueries({ queryKey: ['payments-records'] }); },
-    onError: (e: any) => alert(e?.response?.data?.error || 'Failed'),
+    onSuccess: (r) => { showSuccess('${r.data.paid} marked as paid'); qc.invalidateQueries({ queryKey: ['payments-records'] }); },
+    onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
   });
 
   const addAdvanceMut = useMutation({
     mutationFn: () => api.post('/api/payments/advance', advForm),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['advances'] }); setShowAdvanceForm(false); setAdvForm({ farmerCode: '', amount: '', notes: '', date: new Date().toISOString().split('T')[0] }); },
-    onError: (e: any) => alert(e?.response?.data?.error || 'Failed to record advance'),
+    onError: (e: any) => showError(e?.response?.data?.error || 'Failed to record advance'),
   });
 
   const deleteAdvanceMut = useMutation({

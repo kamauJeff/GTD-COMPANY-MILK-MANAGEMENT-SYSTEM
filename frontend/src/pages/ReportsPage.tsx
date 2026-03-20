@@ -1,356 +1,407 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
-import { Download, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Download, Printer, TrendingUp, AlertTriangle, CheckCircle } from 'lucide-react';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-
-type ReportTab = 'overview' | 'collections' | 'farmers' | 'graders' | 'factory' | 'payments';
+type ReportTab = 'daily-ledger' | 'payment-mid' | 'payment-end' | 'shops';
 
 export default function ReportsPage() {
   const now = new Date();
+  const [tab, setTab]     = useState<ReportTab>('daily-ledger');
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear]   = useState(now.getFullYear());
-  const [tab, setTab]     = useState<ReportTab>('overview');
+  const [date, setDate]   = useState(now.toISOString().split('T')[0]);
+  const [routeId, setRouteId] = useState('');
+  const printRef = useRef<HTMLDivElement>(null);
 
-  const params = { month, year };
+  const { data: routesData } = useQuery({ queryKey: ['routes'], queryFn: () => api.get('/api/routes') });
+  const routes: any[] = routesData?.data ?? [];
 
-  // Overview stats
-  const { data: overviewData } = useQuery({
-    queryKey: ['report-overview', month, year],
-    queryFn: () => api.get('/api/reports/overview', { params }),
-    enabled: tab === 'overview',
+  // Daily litres ledger
+  const { data: ledgerData, isLoading: ledgerLoading } = useQuery({
+    queryKey: ['report-daily-ledger', date, routeId],
+    queryFn: () => api.get('/api/reports/daily-ledger', { params: { date, routeId: routeId || undefined } }),
+    enabled: tab === 'daily-ledger',
   });
-  const ov = overviewData?.data || {};
+  const ledger = ledgerData?.data || {};
 
-  // Collections report
-  const { data: collData } = useQuery({
-    queryKey: ['report-collections', month, year],
-    queryFn: () => api.get('/api/reports/collections', { params }),
-    enabled: tab === 'collections',
+  // Payment reports
+  const { data: midData, isLoading: midLoading } = useQuery({
+    queryKey: ['report-payment-mid', month, year],
+    queryFn: () => api.get('/api/payments', { params: { month, year, isMidMonth: true, status: 'ALL' } }),
+    enabled: tab === 'payment-mid',
   });
-  const coll = collData?.data || {};
+  const midPayments: any[] = midData?.data?.payments ?? [];
+  const midTotals = midData?.data?.totals ?? {};
 
-  // Farmers report
-  const { data: farmersData } = useQuery({
-    queryKey: ['report-farmers', month, year],
-    queryFn: () => api.get('/api/reports/farmers', { params }),
-    enabled: tab === 'farmers',
+  const { data: endData, isLoading: endLoading } = useQuery({
+    queryKey: ['report-payment-end', month, year],
+    queryFn: () => api.get('/api/payments', { params: { month, year, isMidMonth: false, status: 'ALL' } }),
+    enabled: tab === 'payment-end',
   });
-  const farmersReport: any[] = farmersData?.data?.farmers ?? [];
+  const endPayments: any[] = endData?.data?.payments ?? [];
+  const endTotals = endData?.data?.totals ?? {};
 
-  // Graders report
-  const { data: gradersData } = useQuery({
-    queryKey: ['report-graders', month, year],
-    queryFn: () => api.get('/api/reports/graders', { params }),
-    enabled: tab === 'graders',
+  // Shops report
+  const { data: shopsData, isLoading: shopsLoading } = useQuery({
+    queryKey: ['report-shops', month, year],
+    queryFn: () => api.get('/api/reports/shops', { params: { month, year } }),
+    enabled: tab === 'shops',
   });
-  const gradersReport: any[] = gradersData?.data?.graders ?? [];
+  const shopsReport = shopsData?.data || {};
 
-  // Factory report
-  const { data: factoryData } = useQuery({
-    queryKey: ['report-factory', month, year],
-    queryFn: () => api.get('/api/reports/factory', { params }),
-    enabled: tab === 'factory',
-  });
-  const factory = factoryData?.data || {};
-
-  // Payments report
-  const { data: paymentsData } = useQuery({
-    queryKey: ['report-payments', month, year],
-    queryFn: () => api.get('/api/reports/payments', { params }),
-    enabled: tab === 'payments',
-  });
-  const paymentsReport = paymentsData?.data || {};
-
-  const downloadCSV = async (endpoint: string, filename: string) => {
-    try {
-      const res = await api.get(endpoint, { params: { ...params, format: 'csv' }, responseType: 'blob' });
-      const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }));
-      const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
-      URL.revokeObjectURL(url);
-    } catch { alert('Export failed'); }
+  const handlePrint = () => {
+    const content = printRef.current?.innerHTML;
+    if (!content) return;
+    const win = window.open('', '_blank');
+    if (!win) return;
+    win.document.write(`
+      <html><head><title>Gutoria Dairies Report</title>
+      <style>
+        body { font-family: Arial, sans-serif; font-size: 12px; margin: 20px; }
+        table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+        th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
+        th { background: #f5f5f5; font-weight: bold; }
+        .header { text-align: center; margin-bottom: 20px; }
+        .title { font-size: 18px; font-weight: bold; }
+        .green { color: #16a34a; } .red { color: #dc2626; } .orange { color: #ea580c; }
+        .total-row { background: #f0fdf4; font-weight: bold; }
+        @media print { .no-print { display: none; } }
+      </style></head><body>${content}</body></html>
+    `);
+    win.document.close();
+    win.print();
   };
 
-  const TABS: { key: ReportTab; label: string; icon: string }[] = [
-    { key: 'overview',    label: 'Overview',    icon: '📊' },
-    { key: 'collections', label: 'Collections', icon: '🥛' },
-    { key: 'farmers',     label: 'Farmers',     icon: '👨‍🌾' },
-    { key: 'graders',     label: 'Graders',     icon: '📋' },
-    { key: 'factory',     label: 'Factory',     icon: '🏭' },
-    { key: 'payments',    label: 'Payments',    icon: '💰' },
-  ];
+  const statusBadge = (status: string) => {
+    const map: Record<string, string> = {
+      PAID: 'bg-green-100 text-green-700',
+      APPROVED: 'bg-blue-100 text-blue-700',
+      PENDING: 'bg-yellow-100 text-yellow-700',
+    };
+    return `inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${map[status] || 'bg-gray-100 text-gray-600'}`;
+  };
 
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Reports</h1>
-          <p className="text-sm text-gray-500">Full business performance — {MONTHS[month-1]} {year}</p>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-800 dark:text-gray-100">Reports</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Operational intelligence for informed decisions</p>
         </div>
-        <div className="flex gap-2">
-          <select value={month} onChange={e => setMonth(Number(e.target.value))}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
-            {MONTHS.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
-          </select>
-          <select value={year} onChange={e => setYear(Number(e.target.value))}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
-            {[2024,2025,2026].map(y => <option key={y}>{y}</option>)}
-          </select>
+        <div className="flex gap-2 flex-wrap">
+          {tab !== 'daily-ledger' && (
+            <>
+              <select value={month} onChange={e => setMonth(Number(e.target.value))} className="px-3 py-2 border rounded-lg text-sm dark:bg-gray-800 dark:border-gray-600">
+                {MONTHS.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+              </select>
+              <select value={year} onChange={e => setYear(Number(e.target.value))} className="px-3 py-2 border rounded-lg text-sm dark:bg-gray-800 dark:border-gray-600">
+                {[2024,2025,2026].map(y => <option key={y}>{y}</option>)}
+              </select>
+            </>
+          )}
+          {tab === 'daily-ledger' && (
+            <>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                className="px-3 py-2 border rounded-lg text-sm dark:bg-gray-800 dark:border-gray-600" />
+              <select value={routeId} onChange={e => setRouteId(e.target.value)} className="px-3 py-2 border rounded-lg text-sm dark:bg-gray-800 dark:border-gray-600 min-w-[140px]">
+                <option value="">All Routes</option>
+                {routes.map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+            </>
+          )}
+          <button onClick={handlePrint}
+            className="flex items-center gap-2 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700">
+            <Printer size={14} /> Print
+          </button>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-6 flex-wrap">
-        {TABS.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === t.key ? 'bg-green-600 text-white shadow-sm' : 'border border-gray-300 hover:bg-gray-50'}`}>
-            {t.icon} {t.label}
+      <div className="flex gap-2 mb-5 flex-wrap">
+        {([
+          ['daily-ledger',  '📊 Daily Litres Ledger'],
+          ['payment-mid',   '💜 Mid Month Payments'],
+          ['payment-end',   '💚 End Month Payments'],
+          ['shops',         '🏪 Shops Performance'],
+        ] as const).map(([t, l]) => (
+          <button key={t} onClick={() => setTab(t)}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${tab === t ? 'bg-green-600 text-white shadow-sm' : 'border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'}`}>
+            {l}
           </button>
         ))}
       </div>
 
-      {/* ── OVERVIEW ── */}
-      {tab === 'overview' && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[
-              { label: 'Total Litres Collected', value: `${Number(ov.totalLitres || 0).toFixed(0)} L`, sub: `${ov.activeFarmers || 0} active farmers`, color: 'text-blue-700', bg: 'bg-blue-50 border-blue-200' },
-              { label: 'Gross Farmer Payments', value: `KES ${Number(ov.grossPayments || 0).toLocaleString()}`, sub: `@ KES 46/L`, color: 'text-green-700', bg: 'bg-green-50 border-green-200' },
-              { label: 'Total Advances', value: `KES ${Number(ov.totalAdvances || 0).toLocaleString()}`, sub: `${ov.farmersWithAdvances || 0} farmers`, color: 'text-orange-700', bg: 'bg-orange-50 border-orange-200' },
-              { label: 'Net Farmer Payments', value: `KES ${Number(ov.netPayments || 0).toLocaleString()}`, sub: `After deductions`, color: 'text-purple-700', bg: 'bg-purple-50 border-purple-200' },
-              { label: 'Factory Received', value: `${Number(ov.factoryReceived || 0).toFixed(0)} L`, sub: `From all graders`, color: 'text-teal-700', bg: 'bg-teal-50 border-teal-200' },
-              { label: 'Total Variance', value: `${Number(ov.totalVariance || 0).toFixed(0)} L`, sub: `Collected vs received`, color: Number(ov.totalVariance) < 0 ? 'text-red-600' : 'text-green-600', bg: Number(ov.totalVariance) < 0 ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200' },
-              { label: 'Shop Sales', value: `${Number(ov.shopSales || 0).toFixed(0)} L`, sub: `${ov.activeShops || 0} shops`, color: 'text-indigo-700', bg: 'bg-indigo-50 border-indigo-200' },
-              { label: 'Negative Balances', value: `${ov.negativeBalances || 0}`, sub: `Farmers in debt`, color: 'text-red-600', bg: 'bg-red-50 border-red-200' },
-            ].map(s => (
-              <div key={s.label} className={`rounded-xl border p-4 ${s.bg}`}>
-                <div className="text-xs text-gray-500 mb-1">{s.label}</div>
-                <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
-                <div className="text-xs text-gray-400 mt-1">{s.sub}</div>
-              </div>
-            ))}
-          </div>
+      <div ref={printRef}>
+        {/* Print header */}
+        <div className="hidden print:block text-center mb-6">
+          <div className="text-xl font-bold">GUTORIA DAIRIES</div>
+          <div className="text-sm text-gray-500">Report generated: {new Date().toLocaleDateString('en-KE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+        </div>
 
-          {/* Flow summary */}
-          <div className="bg-white rounded-xl border shadow-sm p-5">
-            <h3 className="font-semibold text-gray-800 mb-4">Milk Flow — {MONTHS[month-1]} {year}</h3>
-            <div className="flex items-center gap-2 flex-wrap text-sm">
-              {[
-                { label: 'Farmer Gate', value: `${Number(ov.totalLitres||0).toFixed(0)}L`, color: 'bg-blue-100 text-blue-800' },
-                { label: '→', value: '', color: '' },
-                { label: 'Factory Received', value: `${Number(ov.factoryReceived||0).toFixed(0)}L`, color: 'bg-teal-100 text-teal-800' },
-                { label: '→', value: '', color: '' },
-                { label: 'Pasteurized', value: `${Number(ov.pasteurized||0).toFixed(0)}L`, color: 'bg-purple-100 text-purple-800' },
-                { label: '→', value: '', color: '' },
-                { label: 'Sold to Shops', value: `${Number(ov.shopSales||0).toFixed(0)}L`, color: 'bg-green-100 text-green-800' },
-                { label: '→', value: '', color: '' },
-                { label: 'Revenue', value: `KES ${(Number(ov.shopSales||0)*60).toLocaleString()}`, color: 'bg-yellow-100 text-yellow-800' },
-              ].map((s, i) => s.label === '→' ? (
-                <span key={i} className="text-gray-300 text-lg">→</span>
-              ) : (
-                <div key={i} className={`px-3 py-2 rounded-lg ${s.color}`}>
-                  <div className="text-xs opacity-70">{s.label}</div>
-                  <div className="font-bold">{s.value}</div>
+        {/* ── DAILY LITRES LEDGER ── */}
+        {tab === 'daily-ledger' && (
+          <div className="space-y-4">
+            {ledgerLoading ? <LoadingCard /> : !ledger.routes?.length ? <EmptyCard msg="No collections for this date" /> : (
+              <>
+                {/* Summary */}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  {[
+                    { label: 'Total Collected', value: `${(ledger.summary?.totalCollected || 0).toFixed(1)} L`, color: 'text-green-700 dark:text-green-400' },
+                    { label: 'Factory Received', value: `${(ledger.summary?.totalReceived || 0).toFixed(1)} L`, color: 'text-blue-700 dark:text-blue-400' },
+                    { label: 'Total Variance', value: `${(ledger.summary?.totalVariance || 0).toFixed(1)} L`, color: (ledger.summary?.totalVariance || 0) < 0 ? 'text-red-600' : 'text-green-700' },
+                    { label: 'Routes Active', value: ledger.routes?.length || 0, color: 'text-gray-800 dark:text-gray-200' },
+                    { label: 'Graders', value: ledger.summary?.graderCount || 0, color: 'text-purple-700 dark:text-purple-400' },
+                  ].map(s => (
+                    <div key={s.label} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-3">
+                      <div className="text-xs text-gray-400 mb-1">{s.label}</div>
+                      <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* ── COLLECTIONS ── */}
-      {tab === 'collections' && (
-        <div className="space-y-4">
-          <div className="flex justify-end">
-            <button onClick={() => downloadCSV('/api/reports/collections', `collections-${MONTHS[month-1]}-${year}.csv`)}
-              className="flex items-center gap-2 px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">
-              <Download size={14} /> Export CSV
-            </button>
+                {/* Per-route grader variances */}
+                <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+                  <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 font-semibold text-sm text-gray-700 dark:text-gray-300">
+                    📍 Route-by-Route Breakdown — {new Date(date).toLocaleDateString('en-KE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+                      <tr>{['Route','Grader','Farmers','Collected (L)','Received (L)','Variance (L)','Status'].map(h => (
+                        <th key={h} className="text-left px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400 font-medium">{h}</th>
+                      ))}</tr>
+                    </thead>
+                    <tbody>
+                      {ledger.routes?.map((r: any) => {
+                        const variance = Number(r.received) - Number(r.collected);
+                        const hasIssue = Math.abs(variance) > 1;
+                        return (
+                          <tr key={r.routeId} className={`border-b dark:border-gray-700 ${hasIssue ? 'bg-red-50 dark:bg-red-900/10' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}>
+                            <td className="px-4 py-2.5 font-medium text-gray-800 dark:text-gray-200">{r.routeName}</td>
+                            <td className="px-4 py-2.5 text-gray-600 dark:text-gray-300">{r.graderName}</td>
+                            <td className="px-4 py-2.5 text-center">{r.farmerCount}</td>
+                            <td className="px-4 py-2.5 font-mono font-bold text-green-700 dark:text-green-400">{Number(r.collected).toFixed(1)}</td>
+                            <td className="px-4 py-2.5 font-mono font-bold text-blue-700 dark:text-blue-400">{Number(r.received).toFixed(1)}</td>
+                            <td className={`px-4 py-2.5 font-bold font-mono ${variance < -1 ? 'text-red-600' : variance > 1 ? 'text-yellow-600' : 'text-green-600'}`}>
+                              {variance > 0 ? '+' : ''}{variance.toFixed(1)}
+                            </td>
+                            <td className="px-4 py-2.5">
+                              {hasIssue
+                                ? <span className="flex items-center gap-1 text-xs text-red-600 font-medium"><AlertTriangle size={12} /> Variance</span>
+                                : <span className="flex items-center gap-1 text-xs text-green-600"><CheckCircle size={12} /> OK</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="bg-gray-50 dark:bg-gray-800 border-t dark:border-gray-700 font-bold">
+                      <tr>
+                        <td className="px-4 py-2.5 text-xs" colSpan={3}>TOTAL</td>
+                        <td className="px-4 py-2.5 font-mono text-green-700 dark:text-green-400">{(ledger.summary?.totalCollected || 0).toFixed(1)}</td>
+                        <td className="px-4 py-2.5 font-mono text-blue-700 dark:text-blue-400">{(ledger.summary?.totalReceived || 0).toFixed(1)}</td>
+                        <td className={`px-4 py-2.5 font-mono ${(ledger.summary?.totalVariance || 0) < 0 ? 'text-red-600' : 'text-green-600'}`}>{(ledger.summary?.totalVariance || 0).toFixed(1)}</td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </>
+            )}
           </div>
-          <div className="grid grid-cols-3 gap-4 mb-4">
-            <div className="bg-white rounded-xl border p-4 shadow-sm">
-              <div className="text-xs text-gray-400">Total Litres</div>
-              <div className="text-2xl font-bold text-blue-700">{Number(coll.totalLitres||0).toFixed(1)} L</div>
-            </div>
-            <div className="bg-white rounded-xl border p-4 shadow-sm">
-              <div className="text-xs text-gray-400">Active Farmers</div>
-              <div className="text-2xl font-bold text-gray-800">{coll.activeFarmers || 0}</div>
-            </div>
-            <div className="bg-white rounded-xl border p-4 shadow-sm">
-              <div className="text-xs text-gray-400">Zero-Litre Farmers</div>
-              <div className="text-2xl font-bold text-red-600">{coll.zeroFarmers || 0}</div>
-            </div>
+        )}
+
+        {/* ── MID MONTH PAYMENTS ── */}
+        {tab === 'payment-mid' && (
+          <PaymentReport
+            payments={midPayments}
+            totals={midTotals}
+            loading={midLoading}
+            label="Mid Month"
+            month={month} year={year}
+            statusBadge={statusBadge}
+          />
+        )}
+
+        {/* ── END MONTH PAYMENTS ── */}
+        {tab === 'payment-end' && (
+          <PaymentReport
+            payments={endPayments}
+            totals={endTotals}
+            loading={endLoading}
+            label="End Month"
+            month={month} year={year}
+            statusBadge={statusBadge}
+          />
+        )}
+
+        {/* ── SHOPS PERFORMANCE ── */}
+        {tab === 'shops' && (
+          <div className="space-y-4">
+            {shopsLoading ? <LoadingCard /> : !shopsReport.shops?.length ? <EmptyCard msg="No shop data this month" /> : (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {[
+                    { label: 'Total Delivered', value: `${(shopsReport.totals?.delivered || 0).toFixed(0)} L`, color: 'text-blue-700 dark:text-blue-400' },
+                    { label: 'Total Sold', value: `${(shopsReport.totals?.sold || 0).toFixed(0)} L`, color: 'text-green-700 dark:text-green-400' },
+                    { label: 'Cash Collected', value: `KES ${(shopsReport.totals?.cash || 0).toLocaleString()}`, color: 'text-purple-700 dark:text-purple-400' },
+                    { label: 'KopoKopo Till', value: `KES ${(shopsReport.totals?.till || 0).toLocaleString()}`, color: 'text-teal-700 dark:text-teal-400' },
+                  ].map(s => (
+                    <div key={s.label} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-3">
+                      <div className="text-xs text-gray-400 mb-1">{s.label}</div>
+                      <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
+                      <tr>{['Shop','Shopkeeper','Delivered','Sold','Unaccounted','Cash','Till','Expected','Variance','Performance'].map(h => (
+                        <th key={h} className="text-left px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">{h}</th>
+                      ))}</tr>
+                    </thead>
+                    <tbody>
+                      {shopsReport.shops?.map((s: any) => {
+                        const revVariance = s.actualRevenue - s.expectedRevenue;
+                        const perfScore = s.expectedRevenue > 0 ? (s.actualRevenue / s.expectedRevenue * 100).toFixed(0) : 0;
+                        return (
+                          <tr key={s.shopId} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                            <td className="px-3 py-2.5 font-medium">{s.shopName}</td>
+                            <td className="px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400">{s.keeperName || '–'}</td>
+                            <td className="px-3 py-2.5 font-mono text-blue-700 dark:text-blue-400">{Number(s.delivered).toFixed(0)} L</td>
+                            <td className="px-3 py-2.5 font-mono text-green-700 dark:text-green-400">{Number(s.sold).toFixed(0)} L</td>
+                            <td className={`px-3 py-2.5 font-mono ${Number(s.unaccounted) > 1 ? 'text-red-600 font-bold' : 'text-gray-400'}`}>{Number(s.unaccounted).toFixed(0)} L</td>
+                            <td className="px-3 py-2.5 font-mono">KES {Number(s.cash).toLocaleString()}</td>
+                            <td className="px-3 py-2.5 font-mono">KES {Number(s.till).toLocaleString()}</td>
+                            <td className="px-3 py-2.5 font-mono">KES {Number(s.expectedRevenue).toLocaleString()}</td>
+                            <td className={`px-3 py-2.5 font-bold font-mono ${revVariance < -100 ? 'text-red-600' : 'text-green-600'}`}>
+                              {revVariance >= 0 ? '+' : ''}KES {revVariance.toLocaleString()}
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <div className="flex items-center gap-2">
+                                <div className="w-16 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full">
+                                  <div className={`h-1.5 rounded-full ${Number(perfScore) >= 95 ? 'bg-green-500' : Number(perfScore) >= 80 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                                    style={{ width: `${Math.min(100, Number(perfScore))}%` }} />
+                                </div>
+                                <span className={`text-xs font-bold ${Number(perfScore) >= 95 ? 'text-green-600' : Number(perfScore) >= 80 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                  {perfScore}%
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="bg-gray-50 dark:bg-gray-800 border-t dark:border-gray-700 font-bold">
+                      <tr>
+                        <td className="px-3 py-2.5 text-xs" colSpan={2}>TOTAL</td>
+                        <td className="px-3 py-2.5 font-mono text-blue-700 dark:text-blue-400">{(shopsReport.totals?.delivered || 0).toFixed(0)} L</td>
+                        <td className="px-3 py-2.5 font-mono text-green-700 dark:text-green-400">{(shopsReport.totals?.sold || 0).toFixed(0)} L</td>
+                        <td colSpan={2} className="px-3 py-2.5 font-mono">KES {(shopsReport.totals?.cash || 0).toLocaleString()}</td>
+                        <td className="px-3 py-2.5 font-mono">KES {(shopsReport.totals?.till || 0).toLocaleString()}</td>
+                        <td colSpan={3} />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </>
+            )}
           </div>
-          <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PaymentReport({ payments, totals, loading, label, month, year, statusBadge }: any) {
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const paid    = payments.filter((p: any) => p.status === 'PAID');
+  const unpaid  = payments.filter((p: any) => p.status !== 'PAID' && Number(p.netPay) > 0);
+  const negatives = payments.filter((p: any) => Number(p.netPay) < 0);
+  const byBank  = paid.filter((p: any) => p.farmer?.paymentMethod === 'BANK');
+  const byMpesa = paid.filter((p: any) => p.farmer?.paymentMethod === 'MPESA');
+
+  if (loading) return <LoadingCard />;
+  if (!payments.length) return <EmptyCard msg={`No ${label.toLowerCase()} payment records for ${MONTHS[month-1]} ${year}`} />;
+
+  return (
+    <div className="space-y-4">
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {[
+          { label: 'Total Farmers', value: payments.length, color: 'text-gray-800 dark:text-gray-100' },
+          { label: 'Paid (M-Pesa)', value: byMpesa.length, sub: `KES ${byMpesa.reduce((s: number, p: any) => s + Number(p.netPay), 0).toLocaleString()}`, color: 'text-green-700 dark:text-green-400' },
+          { label: 'Paid (Bank)', value: byBank.length, sub: `KES ${byBank.reduce((s: number, p: any) => s + Number(p.netPay), 0).toLocaleString()}`, color: 'text-blue-700 dark:text-blue-400' },
+          { label: 'Unpaid', value: unpaid.length, sub: `KES ${unpaid.reduce((s: number, p: any) => s + Number(p.netPay), 0).toLocaleString()}`, color: 'text-yellow-600 dark:text-yellow-400' },
+          { label: 'Negatives', value: negatives.length, sub: 'Carried forward', color: 'text-red-600' },
+        ].map(s => (
+          <div key={s.label} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-3">
+            <div className="text-xs text-gray-400 mb-1">{s.label}</div>
+            <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
+            {s.sub && <div className="text-xs text-gray-400 mt-0.5">{s.sub}</div>}
+          </div>
+        ))}
+      </div>
+
+      {/* Sections */}
+      {[
+        { title: `✅ Paid via M-Pesa (${byMpesa.length})`, rows: byMpesa, bg: 'bg-green-50 dark:bg-green-900/10' },
+        { title: `🏦 Paid via Bank (${byBank.length})`, rows: byBank, bg: 'bg-blue-50 dark:bg-blue-900/10' },
+        { title: `⏳ Unpaid — To Be Paid End Month (${unpaid.length})`, rows: unpaid, bg: 'bg-yellow-50 dark:bg-yellow-900/10' },
+        { title: `⚠️ Negatives — Carried Forward (${negatives.length})`, rows: negatives, bg: 'bg-red-50 dark:bg-red-900/10' },
+      ].map(section => section.rows.length > 0 && (
+        <div key={section.title} className={`rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden ${section.bg}`}>
+          <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 font-semibold text-sm text-gray-700 dark:text-gray-300">{section.title}</div>
+          <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
-                <tr>{['Route','Farmers','Total Litres','Avg/Farmer','Avg/Day','Value (KES)'].map(h => (
-                  <th key={h} className="text-left px-4 py-3 text-xs text-gray-500 font-medium">{h}</th>
+              <thead className="bg-white/50 dark:bg-gray-800/50 border-b dark:border-gray-700">
+                <tr>{['Code','Farmer','Route','Method','Account','Litres','Gross','Advances','Net Pay','Status'].map(h => (
+                  <th key={h} className="text-left px-3 py-2 text-xs text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">{h}</th>
                 ))}</tr>
               </thead>
               <tbody>
-                {(coll.byRoute || []).map((r: any) => (
-                  <tr key={r.routeId} className="border-b hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium">{r.routeName}</td>
-                    <td className="px-4 py-3">{r.farmerCount}</td>
-                    <td className="px-4 py-3 font-bold text-blue-700">{Number(r.totalLitres).toFixed(1)} L</td>
-                    <td className="px-4 py-3">{r.farmerCount > 0 ? (Number(r.totalLitres)/r.farmerCount).toFixed(1) : '0'} L</td>
-                    <td className="px-4 py-3">{(Number(r.totalLitres)/30).toFixed(1)} L</td>
-                    <td className="px-4 py-3 font-mono">KES {(Number(r.totalLitres)*46).toLocaleString()}</td>
+                {section.rows.map((p: any) => (
+                  <tr key={p.id} className="border-b dark:border-gray-700 last:border-0">
+                    <td className="px-3 py-2 font-mono text-xs text-gray-400">{p.farmer?.code}</td>
+                    <td className="px-3 py-2 font-medium text-xs">{p.farmer?.name}</td>
+                    <td className="px-3 py-2 text-xs text-gray-500">{p.farmer?.route?.name}</td>
+                    <td className="px-3 py-2"><span className={`text-xs px-2 py-0.5 rounded-full ${p.farmer?.paymentMethod === 'MPESA' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>{p.farmer?.paymentMethod === 'MPESA' ? '📱' : '🏦'} {p.farmer?.paymentMethod}</span></td>
+                    <td className="px-3 py-2 font-mono text-xs text-gray-500">{p.farmer?.paymentMethod === 'MPESA' ? p.farmer?.mpesaPhone || p.farmer?.phone : p.farmer?.bankAccount}</td>
+                    <td className="px-3 py-2 font-mono text-xs">{(Number(p.grossPay)/46).toFixed(0)} L</td>
+                    <td className="px-3 py-2 font-mono text-xs">KES {Number(p.grossPay).toLocaleString()}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-orange-600">KES {Number(p.totalAdvances).toLocaleString()}</td>
+                    <td className={`px-3 py-2 font-bold font-mono text-xs ${Number(p.netPay) < 0 ? 'text-red-600' : 'text-green-700 dark:text-green-400'}`}>KES {Number(p.netPay).toLocaleString()}</td>
+                    <td className="px-3 py-2"><span className={statusBadge(p.status)}>{p.status}</span></td>
                   </tr>
                 ))}
               </tbody>
+              <tfoot className="bg-white/70 dark:bg-gray-800/70 border-t dark:border-gray-700 font-bold">
+                <tr>
+                  <td className="px-3 py-2 text-xs" colSpan={8}>SUBTOTAL ({section.rows.length})</td>
+                  <td className="px-3 py-2 font-mono text-xs text-green-700 dark:text-green-400">
+                    KES {section.rows.reduce((s: number, p: any) => s + Number(p.netPay), 0).toLocaleString()}
+                  </td>
+                  <td />
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
-      )}
+      ))}
+    </div>
+  );
+}
 
-      {/* ── FARMERS ── */}
-      {tab === 'farmers' && (
-        <div className="space-y-4">
-          <div className="flex justify-end">
-            <button onClick={() => downloadCSV('/api/reports/farmers', `farmers-report-${MONTHS[month-1]}-${year}.csv`)}
-              className="flex items-center gap-2 px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">
-              <Download size={14} /> Export CSV
-            </button>
-          </div>
-          <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
-                <tr>{['Code','Farmer','Route','Litres','Gross Pay','Advances','B/F Debt','Net Pay','Status'].map(h => (
-                  <th key={h} className="text-left px-3 py-3 text-xs text-gray-500 font-medium whitespace-nowrap">{h}</th>
-                ))}</tr>
-              </thead>
-              <tbody>
-                {farmersReport.length === 0 ? (
-                  <tr><td colSpan={9} className="text-center py-12 text-gray-400">No payment data for this month</td></tr>
-                ) : farmersReport.map((f: any) => (
-                  <tr key={f.farmerId} className="border-b hover:bg-gray-50">
-                    <td className="px-3 py-2.5 font-mono text-xs text-gray-500">{f.farmerCode}</td>
-                    <td className="px-3 py-2.5 font-medium">{f.farmerName}</td>
-                    <td className="px-3 py-2.5 text-xs text-gray-500">{f.routeName}</td>
-                    <td className="px-3 py-2.5 font-mono">{Number(f.totalLitres).toFixed(1)} L</td>
-                    <td className="px-3 py-2.5 font-mono">KES {Number(f.grossPay).toLocaleString()}</td>
-                    <td className="px-3 py-2.5 font-mono text-orange-600">KES {Number(f.advances).toLocaleString()}</td>
-                    <td className="px-3 py-2.5 font-mono text-red-500">KES {Number(f.bfDebt||0).toLocaleString()}</td>
-                    <td className={`px-3 py-2.5 font-bold font-mono ${Number(f.netPay) < 0 ? 'text-red-600' : 'text-green-700'}`}>
-                      KES {Number(f.netPay).toLocaleString()}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${Number(f.netPay) < 0 ? 'bg-red-100 text-red-600' : Number(f.netPay) === 0 ? 'bg-gray-100 text-gray-500' : 'bg-green-100 text-green-700'}`}>
-                        {Number(f.netPay) < 0 ? 'Negative' : Number(f.netPay) === 0 ? 'Zero' : 'Payable'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* ── GRADERS ── */}
-      {tab === 'graders' && (
-        <div className="space-y-4">
-          <div className="flex justify-end">
-            <button onClick={() => downloadCSV('/api/reports/graders', `graders-report-${MONTHS[month-1]}-${year}.csv`)}
-              className="flex items-center gap-2 px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">
-              <Download size={14} /> Export CSV
-            </button>
-          </div>
-          <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
-                <tr>{['Code','Grader','Route','Collected','Received at Factory','Variance (L)','Variance (KES)','Status'].map(h => (
-                  <th key={h} className="text-left px-3 py-3 text-xs text-gray-500 font-medium whitespace-nowrap">{h}</th>
-                ))}</tr>
-              </thead>
-              <tbody>
-                {gradersReport.length === 0 ? (
-                  <tr><td colSpan={8} className="text-center py-12 text-gray-400">No grader data for this month</td></tr>
-                ) : gradersReport.map((g: any) => {
-                  const varL = Number(g.variance || 0);
-                  const varKes = Math.abs(varL) * 46;
-                  return (
-                    <tr key={g.graderId} className="border-b hover:bg-gray-50">
-                      <td className="px-3 py-2.5 font-mono text-xs text-gray-500">{g.graderCode}</td>
-                      <td className="px-3 py-2.5 font-medium">{g.graderName}</td>
-                      <td className="px-3 py-2.5 text-xs text-gray-500">{g.routeName || '–'}</td>
-                      <td className="px-3 py-2.5 font-mono text-blue-700">{Number(g.collected).toFixed(1)} L</td>
-                      <td className="px-3 py-2.5 font-mono text-green-700">{Number(g.received).toFixed(1)} L</td>
-                      <td className={`px-3 py-2.5 font-bold font-mono ${varL < 0 ? 'text-red-600' : varL > 0 ? 'text-yellow-600' : 'text-green-600'}`}>
-                        {varL >= 0 ? '+' : ''}{varL.toFixed(1)} L
-                      </td>
-                      <td className={`px-3 py-2.5 font-mono ${varL < 0 ? 'text-red-600' : 'text-gray-500'}`}>
-                        {varL < 0 ? `KES ${varKes.toLocaleString()}` : '–'}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${varL < 0 ? 'bg-red-100 text-red-600' : varL === 0 ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                          {varL < 0 ? '⚠ Missing' : varL === 0 ? '✓ Perfect' : 'Excess'}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* ── FACTORY ── */}
-      {tab === 'factory' && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[
-              { label: 'Total Received', value: `${Number(factory.received||0).toFixed(0)} L`, color: 'text-blue-700' },
-              { label: 'Total Input', value: `${Number(factory.input||0).toFixed(0)} L`, color: 'text-purple-700' },
-              { label: 'Total Output', value: `${Number(factory.output||0).toFixed(0)} L`, color: 'text-green-700' },
-              { label: 'Total Loss', value: `${Number(factory.loss||0).toFixed(0)} L`, color: 'text-red-600' },
-              { label: 'Efficiency', value: `${factory.efficiency || '–'}%`, color: Number(factory.efficiency) >= 95 ? 'text-green-700' : 'text-orange-600' },
-              { label: 'Delivered to Shops', value: `${Number(factory.delivered||0).toFixed(0)} L`, color: 'text-teal-700' },
-              { label: 'Total Batches', value: factory.batches || 0, color: 'text-gray-800' },
-              { label: 'Shop Revenue', value: `KES ${(Number(factory.delivered||0)*60).toLocaleString()}`, color: 'text-green-700' },
-            ].map(s => (
-              <div key={s.label} className="bg-white rounded-xl border p-4 shadow-sm">
-                <div className="text-xs text-gray-400 mb-1">{s.label}</div>
-                <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── PAYMENTS ── */}
-      {tab === 'payments' && (
-        <div className="space-y-4">
-          <div className="flex justify-end">
-            <button onClick={() => downloadCSV('/api/reports/payments', `payments-${MONTHS[month-1]}-${year}.csv`)}
-              className="flex items-center gap-2 px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">
-              <Download size={14} /> Export CSV
-            </button>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[
-              { label: 'Farmers Paid', value: paymentsReport.paidCount || 0, color: 'text-green-700' },
-              { label: 'Total Gross', value: `KES ${Number(paymentsReport.totalGross||0).toLocaleString()}`, color: 'text-blue-700' },
-              { label: 'Total Advances', value: `KES ${Number(paymentsReport.totalAdvances||0).toLocaleString()}`, color: 'text-orange-600' },
-              { label: 'Total Net', value: `KES ${Number(paymentsReport.totalNet||0).toLocaleString()}`, color: 'text-green-700' },
-              { label: 'Mid-Month Paid', value: paymentsReport.midMonthCount || 0, color: 'text-purple-700' },
-              { label: 'End-Month Paid', value: paymentsReport.endMonthCount || 0, color: 'text-teal-700' },
-              { label: 'Negative Balances', value: paymentsReport.negativeCount || 0, color: 'text-red-600' },
-              { label: 'Carried Forward', value: `KES ${Number(paymentsReport.carriedForward||0).toLocaleString()}`, color: 'text-red-600' },
-            ].map(s => (
-              <div key={s.label} className="bg-white rounded-xl border p-4 shadow-sm">
-                <div className="text-xs text-gray-400 mb-1">{s.label}</div>
-                <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+function LoadingCard() {
+  return <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-16 text-center text-gray-400">Loading report...</div>;
+}
+function EmptyCard({ msg }: { msg: string }) {
+  return (
+    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-16 text-center text-gray-400">
+      <TrendingUp size={40} className="mx-auto mb-3 opacity-30" />
+      <div className="font-medium">{msg}</div>
     </div>
   );
 }

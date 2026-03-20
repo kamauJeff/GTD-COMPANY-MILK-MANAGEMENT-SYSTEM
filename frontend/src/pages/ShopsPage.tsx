@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { showSuccess, showError, showWarning } from '../components/Toast';
 import { Plus, Truck, Store, CheckCircle, AlertTriangle, ChevronDown, ChevronRight, X, Download } from 'lucide-react';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -62,18 +63,18 @@ export default function ShopsPage() {
   const createTripMut = useMutation({
     mutationFn: () => api.post('/api/drivers/trips', { ...tripForm, driverId: Number(tripForm.driverId) }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['trips'] }); setShowNewTrip(false); setTripForm({ driverId: '', tripDate: now.toISOString().split('T')[0], notes: '' }); },
-    onError: (e: any) => alert(e?.response?.data?.error || 'Failed'),
+    onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
   });
 
   const addDropMut = useMutation({
     mutationFn: (tripId: number) => api.post(`/api/drivers/trips/${tripId}/drops`, { shopId: Number(dropForm.shopId), litres: Number(dropForm.litres) }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['trips'] }); setShowAddDrop(null); setDropForm({ shopId: '', litres: '' }); },
-    onError: (e: any) => alert(e?.response?.data?.error || 'Failed'),
+    onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
   });
 
   const confirmTripMut = useMutation({
     mutationFn: (id: number) => api.post(`/api/drivers/trips/${id}/confirm`, {}),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['trips'] }); alert('✅ Trip confirmed'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['trips'] }); showSuccess('Trip confirmed'); },
   });
 
   const deleteDropMut = useMutation({
@@ -92,13 +93,13 @@ export default function ShopsPage() {
       variance: (Number(saleForm.cashCollected) + Number(saleForm.tillAmount || 0)) - (Number(saleForm.litresSold) * 60),
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['shop-sales'] }); qc.invalidateQueries({ queryKey: ['shops-monthly'] }); qc.invalidateQueries({ queryKey: ['daily-summary'] }); setSaleForm(f => ({ ...f, litresSold: '', cashCollected: '', tillAmount: '' })); },
-    onError: (e: any) => alert(e?.response?.data?.error || 'Failed'),
+    onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
   });
 
   const assignMut = useMutation({
     mutationFn: ({ shopId, keeperId }: any) => api.put(`/api/shops/${shopId}/assign`, { keeperId }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['shops'] }),
-    onError: (e: any) => alert(e?.response?.data?.error || 'Failed'),
+    onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
   });
 
   const statusColor = (status: string) => ({ PENDING: 'bg-yellow-100 text-yellow-700', CONFIRMED: 'bg-green-100 text-green-700', CANCELLED: 'bg-red-100 text-red-600' }[status] || 'bg-gray-100 text-gray-600');

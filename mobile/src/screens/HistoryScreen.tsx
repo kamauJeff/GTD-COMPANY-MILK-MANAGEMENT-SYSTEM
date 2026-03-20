@@ -6,9 +6,19 @@ import {
 } from 'react-native';
 import { getAllCollectionsToday, getPendingCollections } from '../utils/offlineStore';
 import { syncPendingCollections } from '../utils/syncService';
+import FarmerStatementScreen from './FarmerStatementScreen';
 
 interface Employee { id: number; name: string; code: string; role: string; }
 interface Props { employee: Employee; onBack: () => void; }
+
+export default function HistoryScreen({ employee, onBack }: Props) {
+  const [records, setRecords]       = useState<any[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [syncing, setSyncing]       = useState(false);
+  const [showStatement, setShowStatement] = useState<{ farmerCode: string; month: number; year: number } | null>(null);
+
+  const now = new Date();
 
 export default function HistoryScreen({ employee, onBack }: Props) {
   const [records, setRecords]     = useState<any[]>([]);
@@ -46,6 +56,14 @@ export default function HistoryScreen({ employee, onBack }: Props) {
 
   return (
     <View style={s.root}>
+      {showStatement && (
+        <FarmerStatementScreen
+          farmerCode={showStatement.farmerCode}
+          month={showStatement.month}
+          year={showStatement.year}
+          onClose={() => setShowStatement(null)}
+        />
+      )}
       {/* Header */}
       <View style={s.header}>
         <TouchableOpacity style={s.backBtn} onPress={onBack}>
@@ -101,7 +119,7 @@ export default function HistoryScreen({ employee, onBack }: Props) {
             {pendingRows.length > 0 && (
               <>
                 <Text style={s.groupLabel}>⏳ PENDING SYNC ({pendingRows.length})</Text>
-                {pendingRows.map(r => <RecordRow key={r.id} record={r} />)}
+                {pendingRows.map(r => <RecordRow key={r.id} record={r} onStatement={(code: string) => setShowStatement({ farmerCode: code, month: now.getMonth()+1, year: now.getFullYear() })} />)}
               </>
             )}
 
@@ -109,7 +127,7 @@ export default function HistoryScreen({ employee, onBack }: Props) {
             {syncedRows.length > 0 && (
               <>
                 <Text style={[s.groupLabel, { marginTop: 16 }]}>✓ SYNCED ({syncedRows.length})</Text>
-                {syncedRows.map(r => <RecordRow key={r.id} record={r} synced />)}
+                {syncedRows.map(r => <RecordRow key={r.id} record={r} synced onStatement={(code: string) => setShowStatement({ farmerCode: code, month: now.getMonth()+1, year: now.getFullYear() })} />)}
               </>
             )}
           </>
@@ -121,8 +139,9 @@ export default function HistoryScreen({ employee, onBack }: Props) {
   );
 }
 
-function RecordRow({ record, synced }: { record: any; synced?: boolean }) {
-  const time = new Date(record.collected_at).toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' });
+function RecordRow({ record, synced, onStatement }: { record: any; synced?: boolean; onStatement?: (code: string) => void }) {
+  const time = new Date(record.collected_at || record.collectedAt).toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' });
+  const farmerCode = record.farmer_code || record.farmerCode || '';
   return (
     <View style={[rs.row, synced && rs.rowSynced]}>
       <View style={rs.timeWrap}>
@@ -132,7 +151,15 @@ function RecordRow({ record, synced }: { record: any; synced?: boolean }) {
         <Text style={rs.farmerName}>{record.farmer_name ?? `Farmer #${record.farmer_id}`}</Text>
         <Text style={rs.status}>{synced ? '✓ Uploaded' : '⏳ Pending'}</Text>
       </View>
-      <Text style={rs.litres}>{Number(record.litres).toFixed(1)}L</Text>
+      <View style={{ alignItems: 'flex-end', gap: 4 }}>
+        <Text style={rs.litres}>{Number(record.litres).toFixed(1)}L</Text>
+        {synced && farmerCode && onStatement && (
+          <TouchableOpacity onPress={() => onStatement(farmerCode)}
+            style={{ backgroundColor: '#0a1e10', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: '#1e4d2a' }}>
+            <Text style={{ color: '#3ddc84', fontSize: 9, fontWeight: '700' }}>📄 STMT</Text>
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 }

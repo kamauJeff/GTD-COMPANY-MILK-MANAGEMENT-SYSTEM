@@ -42,37 +42,48 @@ export default router;
 
 // GET my profile
 router.get('/me', async (req: any, res) => {
-  const employee = await prisma.employee.findUnique({
-    where: { id: req.user.id },
-    select: { id: true, code: true, name: true, phone: true, role: true },
-  });
-  res.json(employee);
+  try {
+    const employee = await prisma.employee.findUnique({
+      where: { id: req.user.id },
+      select: { id: true, code: true, name: true, phone: true, role: true },
+    });
+    if (!employee) return res.status(404).json({ error: 'Employee not found' });
+    res.json(employee);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // PUT update my profile
 router.put('/me', async (req: any, res) => {
-  const { name, phone } = req.body;
-  const employee = await prisma.employee.update({
-    where: { id: req.user.id },
-    data: { ...(name ? { name } : {}), ...(phone ? { phone } : {}) },
-    select: { id: true, code: true, name: true, phone: true, role: true },
-  });
-  res.json(employee);
+  try {
+    const { name, phone } = req.body;
+    const employee = await prisma.employee.update({
+      where: { id: req.user.id },
+      data: { ...(name ? { name } : {}), ...(phone ? { phone } : {}) },
+      select: { id: true, code: true, name: true, phone: true, role: true },
+    });
+    res.json(employee);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // PUT change password
 router.put('/me/password', async (req: any, res) => {
-  const { current, newPassword } = req.body;
-  if (!current || !newPassword) return res.status(400).json({ error: 'Both current and new password are required' });
-  if (newPassword.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
-
-  const employee = await prisma.employee.findUnique({ where: { id: req.user.id } });
-  if (!employee) return res.status(404).json({ error: 'Employee not found' });
-
-  const valid = await bcrypt.compare(current, employee.passwordHash);
-  if (!valid) return res.status(400).json({ error: 'Current password is incorrect' });
-
-  const hash = await bcrypt.hash(newPassword, 10);
-  await prisma.employee.update({ where: { id: req.user.id }, data: { passwordHash: hash } });
-  res.json({ success: true, message: 'Password changed successfully' });
+  try {
+    const { current, newPassword } = req.body;
+    if (!current || !newPassword) return res.status(400).json({ error: 'Both current and new password are required' });
+    if (newPassword.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    const employee = await prisma.employee.findUnique({ where: { id: req.user.id } });
+    if (!employee) return res.status(404).json({ error: 'Employee not found' });
+    if (!employee.passwordHash) return res.status(400).json({ error: 'No password set on this account' });
+    const valid = await bcrypt.compare(current, employee.passwordHash);
+    if (!valid) return res.status(400).json({ error: 'Current password is incorrect' });
+    const hash = await bcrypt.hash(newPassword, 10);
+    await prisma.employee.update({ where: { id: req.user.id }, data: { passwordHash: hash } });
+    res.json({ success: true, message: 'Password changed successfully' });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
 });

@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { collectionsApi, routesApi, api } from '../api/client';
-import { Download } from 'lucide-react';
+import { showSuccess, showError } from '../components/Toast';
+import { Download, Plus, Edit3, Trash2, X, AlertTriangle } from 'lucide-react';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -11,9 +12,33 @@ export default function CollectionsPage() {
   const [year, setYear]       = useState(now.getFullYear());
   const [routeId, setRouteId] = useState('');
   const [search, setSearch]   = useState('');
+  const [showCorrections, setShowCorrections] = useState(false);
+  const [correctionTab, setCorrectionTab] = useState<'manual'|'correct'|'advance'>('manual');
+  const [manualForm, setManualForm] = useState({ farmerCode: '', litres: '', collectedAt: now.toISOString().split('T')[0], routeId: '' });
+  const [correctForm, setCorrectForm] = useState({ id: '', litres: '', collectedAt: '' });
+  const [advanceForm, setAdvanceForm] = useState({ farmerCode: '', amount: '', notes: '' });
+  const qc = useQueryClient();
 
   const { data: routesData } = useQuery({ queryKey: ['routes'], queryFn: () => routesApi.list() });
   const routes: any[] = routesData?.data ?? [];
+
+  const manualMut = useMutation({
+    mutationFn: () => api.post('/api/collections/manual', { ...manualForm, litres: Number(manualForm.litres), routeId: manualForm.routeId || undefined }),
+    onSuccess: (r) => { showSuccess(`Recorded ${r.data.farmer?.name} — ${manualForm.litres} L`); qc.invalidateQueries({ queryKey: ['collection-journal'] }); setManualForm(f => ({...f, litres: '', farmerCode: ''})); },
+    onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
+  });
+
+  const correctMut = useMutation({
+    mutationFn: () => api.put(`/api/collections/${correctForm.id}`, { litres: Number(correctForm.litres), collectedAt: correctForm.collectedAt || undefined }),
+    onSuccess: () => { showSuccess('Collection corrected'); qc.invalidateQueries({ queryKey: ['collection-journal'] }); setCorrectForm({ id: '', litres: '', collectedAt: '' }); },
+    onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
+  });
+
+  const advanceMut = useMutation({
+    mutationFn: () => api.post('/api/collections/advance/correct', advanceForm),
+    onSuccess: () => { showSuccess('B/f correction recorded'); qc.invalidateQueries({ queryKey: ['collection-journal'] }); setAdvanceForm({ farmerCode: '', amount: '', notes: '' }); },
+    onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
+  });
 
   const { data: gridData, isLoading } = useQuery({
     queryKey: ['collection-journal', month, year, routeId],
@@ -67,6 +92,10 @@ export default function CollectionsPage() {
           <h1 className="text-xl md:text-2xl font-bold text-gray-800">Milk Collections Journal</h1>
           <p className="text-sm text-gray-500">{MONTHS[month-1]} {year} · {filtered.length} farmers · {getGrandTotal().toFixed(1)} L</p>
         </div>
+        <button onClick={() => setShowCorrections(true)}
+          className="flex items-center gap-2 px-3 py-2 border border-orange-300 text-orange-600 dark:text-orange-400 rounded-lg text-sm hover:bg-orange-50 dark:hover:bg-orange-900/20">
+          <Edit3 size={14} /> Corrections
+        </button>
         <button onClick={handleExport}
           className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
           <Download size={14} /> Export CSV
@@ -216,6 +245,139 @@ export default function CollectionsPage() {
           </div>
         )}
       </div>
+
+      {/* Corrections Modal */}
+      {showCorrections && (
+        <div className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto">
+            <div className="bg-orange-600 px-5 py-4 text-white rounded-t-2xl flex justify-between items-center sticky top-0">
+              <div>
+                <h2 className="text-lg font-bold">✏️ Collection Corrections</h2>
+                <p className="text-orange-200 text-xs mt-0.5">Manual entry, correct mistakes, adjust b/f</p>
+              </div>
+              <button onClick={() => setShowCorrections(false)}><X size={20} /></button>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex border-b border-gray-200 dark:border-gray-700">
+              {([['manual','➕ Manual Entry'],['correct','✏️ Correct Record'],['advance','⚖️ Adjust B/f']] as const).map(([t,l]) => (
+                <button key={t} onClick={() => setCorrectionTab(t)}
+                  className={`flex-1 py-3 text-xs font-medium transition-all ${correctionTab === t ? 'border-b-2 border-orange-500 text-orange-600 dark:text-orange-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+                  {l}
+                </button>
+              ))}
+            </div>
+
+            <div className="p-5 space-y-3">
+              {/* Manual Entry */}
+              {correctionTab === 'manual' && (
+                <>
+                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-xs text-blue-700 dark:text-blue-300 flex gap-2">
+                    <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                    Record a missed or backdated collection for any farmer
+                  </div>
+                  {[
+                    { label: 'Farmer Code *', key: 'farmerCode', placeholder: 'e.g. FM0001', upper: true },
+                    { label: 'Litres *', key: 'litres', placeholder: '0.0', type: 'number' },
+                  ].map(({ label, key, placeholder, upper, type }) => (
+                    <div key={key}>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">{label}</label>
+                      <input type={type || 'text'} value={(manualForm as any)[key]}
+                        onChange={e => setManualForm(f => ({...f, [key]: upper ? e.target.value.toUpperCase() : e.target.value}))}
+                        placeholder={placeholder}
+                        className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100" />
+                    </div>
+                  ))}
+                  <div>
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Collection Date *</label>
+                    <input type="date" value={manualForm.collectedAt}
+                      onChange={e => setManualForm(f => ({...f, collectedAt: e.target.value}))}
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Route (optional — auto-detected from farmer)</label>
+                    <select value={manualForm.routeId} onChange={e => setManualForm(f => ({...f, routeId: e.target.value}))}
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100">
+                      <option value="">Auto-detect from farmer</option>
+                      {routes.map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                    </select>
+                  </div>
+                  {manualForm.litres && Number(manualForm.litres) > 150 && (
+                    <div className="p-2 bg-red-50 dark:bg-red-900/20 rounded-lg text-xs text-red-600 flex gap-2">
+                      <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" />
+                      {Number(manualForm.litres)} litres is unusually high — please verify
+                    </div>
+                  )}
+                  <button onClick={() => manualMut.mutate()} disabled={!manualForm.farmerCode || !manualForm.litres || manualMut.isPending}
+                    className="w-full py-3 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 disabled:opacity-50 text-sm">
+                    {manualMut.isPending ? 'Recording...' : 'Record Collection'}
+                  </button>
+                </>
+              )}
+
+              {/* Correct Record */}
+              {correctionTab === 'correct' && (
+                <>
+                  <div className="p-3 bg-orange-50 dark:bg-orange-900/20 rounded-xl text-xs text-orange-700 dark:text-orange-300 flex gap-2">
+                    <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                    Fix incorrect litres on an existing record. Find the Collection ID from the database or ask IT.
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Collection ID *</label>
+                    <input type="number" value={correctForm.id}
+                      onChange={e => setCorrectForm(f => ({...f, id: e.target.value}))}
+                      placeholder="e.g. 42" className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100 font-mono" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Corrected Litres *</label>
+                    <input type="number" value={correctForm.litres}
+                      onChange={e => setCorrectForm(f => ({...f, litres: e.target.value}))}
+                      placeholder="Correct value e.g. 30"
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100" />
+                  </div>
+                  <button onClick={() => correctMut.mutate()} disabled={!correctForm.id || !correctForm.litres || correctMut.isPending}
+                    className="w-full py-3 bg-orange-600 text-white rounded-xl font-medium hover:bg-orange-700 disabled:opacity-50 text-sm">
+                    {correctMut.isPending ? 'Correcting...' : 'Correct Record'}
+                  </button>
+                </>
+              )}
+
+              {/* Adjust B/f */}
+              {correctionTab === 'advance' && (
+                <>
+                  <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl text-xs text-purple-700 dark:text-purple-300 flex gap-2">
+                    <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                    Correct an incorrect carried-forward balance (b/f) for a farmer. Positive amount = add to deductions, negative = reduce deductions.
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Farmer Code *</label>
+                    <input value={advanceForm.farmerCode}
+                      onChange={e => setAdvanceForm(f => ({...f, farmerCode: e.target.value.toUpperCase()}))}
+                      placeholder="e.g. FM0001" className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Adjustment Amount (KES) *</label>
+                    <input type="number" value={advanceForm.amount}
+                      onChange={e => setAdvanceForm(f => ({...f, amount: e.target.value}))}
+                      placeholder="e.g. 500 or -500" className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100 font-mono" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Reason *</label>
+                    <input value={advanceForm.notes}
+                      onChange={e => setAdvanceForm(f => ({...f, notes: e.target.value}))}
+                      placeholder="e.g. Wrong b/f entered last month"
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100" />
+                  </div>
+                  <button onClick={() => advanceMut.mutate()} disabled={!advanceForm.farmerCode || !advanceForm.amount || !advanceForm.notes || advanceMut.isPending}
+                    className="w-full py-3 bg-purple-600 text-white rounded-xl font-medium hover:bg-purple-700 disabled:opacity-50 text-sm">
+                    {advanceMut.isPending ? 'Saving...' : 'Save Adjustment'}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

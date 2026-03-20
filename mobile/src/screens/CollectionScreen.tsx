@@ -23,6 +23,9 @@ export default function CollectionScreen({ employee, onBack, routeId, routeName 
   const [sessionSaved, setSessionSaved]     = useState<any[]>([]);
   const [showReceipt, setShowReceipt]       = useState<any>(null);
   const [isOnline, setIsOnline]             = useState(true);
+  const today = new Date().toISOString().split('T')[0];
+  const [collectionDate, setCollectionDate] = useState(today);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [cachedCount, setCachedCount]       = useState(0);
   const [syncing, setSyncing]               = useState(false);
   const litresRef = useRef<TextInput>(null);
@@ -97,7 +100,7 @@ export default function CollectionScreen({ employee, onBack, routeId, routeName 
         routeId:     selectedFarmer.routeId ?? selectedFarmer.route?.id ?? routeId,
         graderId:    employee.id,
         litres:      l,
-        collectedAt: new Date().toISOString(),
+        collectedAt: new Date(collectionDate + 'T' + new Date().toTimeString().split(' ')[0]).toISOString(),
       });
 
       const newRecord = {
@@ -163,7 +166,8 @@ export default function CollectionScreen({ employee, onBack, routeId, routeName 
         <View style={{ flex: 1 }}>
           <Text style={s.headerTitle}>Record Collection</Text>
           <Text style={s.headerSub}>
-            {routeName ? `📍 ${routeName}  · ` : ''}{new Date().toLocaleDateString('en-KE', { weekday: 'short', day: 'numeric', month: 'short' })}
+            {routeName ? `📍 ${routeName}  · ` : ''}{new Date(collectionDate).toLocaleDateString('en-KE', { weekday: 'short', day: 'numeric', month: 'short' })}
+            {collectionDate !== today ? '  ⚠️ BACKDATED' : ''}
           </Text>
         </View>
         {sessionSaved.length > 0 && (
@@ -233,8 +237,41 @@ export default function CollectionScreen({ employee, onBack, routeId, routeName 
           </View>
         )}
 
+        {/* Date selector */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <Text style={[s.label, { marginTop: 0, flex: 1 }]}>
+            📅 {new Date(collectionDate).toLocaleDateString('en-KE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+            {collectionDate !== today ? '  ⚠️ BACKDATED' : '  (Today)'}
+          </Text>
+          <TouchableOpacity onPress={() => setShowDatePicker(!showDatePicker)}
+            style={{ paddingHorizontal: 12, paddingVertical: 6, backgroundColor: collectionDate !== today ? '#1a1200' : '#132d48', borderRadius: 10, borderWidth: 1, borderColor: collectionDate !== today ? '#f59e0b' : '#1e3d5c' }}>
+            <Text style={{ color: collectionDate !== today ? '#f59e0b' : '#4a7090', fontSize: 12 }}>
+              {showDatePicker ? 'Close' : 'Change Date'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {showDatePicker && (
+          <View style={{ backgroundColor: '#132d48', borderRadius: 16, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: '#1e3d5c' }}>
+            <Text style={{ color: '#4a7090', fontSize: 10, marginBottom: 8 }}>SELECT DATE (for backdated entry)</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {Array.from({ length: 7 }, (_, i) => {
+                const d = new Date(); d.setDate(d.getDate() - i);
+                const str = d.toISOString().split('T')[0];
+                const label = i === 0 ? 'Today' : i === 1 ? 'Yesterday' : d.toLocaleDateString('en-KE', { weekday: 'short', day: 'numeric', month: 'short' });
+                return (
+                  <TouchableOpacity key={str} onPress={() => { setCollectionDate(str); setShowDatePicker(false); }}
+                    style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: collectionDate === str ? GREEN : '#1e3d5c', borderWidth: 1, borderColor: collectionDate === str ? GREEN : '#2a4d6a' }}>
+                    <Text style={{ color: collectionDate === str ? '#000' : '#fff', fontSize: 11, fontWeight: collectionDate === str ? '700' : '400' }}>{label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
         {/* Litres */}
-        <Text style={[s.label, { marginTop: 20 }]}>LITRES COLLECTED</Text>
+        <Text style={[s.label, { marginTop: 8 }]}>LITRES COLLECTED</Text>
         <TextInput
           ref={litresRef}
           style={s.litresInput}
@@ -246,6 +283,16 @@ export default function CollectionScreen({ employee, onBack, routeId, routeName 
           returnKeyType="done"
           onSubmitEditing={handleSave}
         />
+
+        {/* Validation warning */}
+        {Number(litres) > 150 && (
+          <View style={{ backgroundColor: '#1a0a00', borderRadius: 10, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: '#dc2626', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={{ fontSize: 18 }}>⚠️</Text>
+            <Text style={{ color: '#f87171', fontSize: 12, flex: 1 }}>
+              {Number(litres).toFixed(0)} litres is unusually high. Please verify before saving.
+            </Text>
+          </View>
+        )}
 
         {/* Quick preset */}
         <View style={s.quickRow}>

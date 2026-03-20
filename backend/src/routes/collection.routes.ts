@@ -69,3 +69,75 @@ router.get('/statement', async (req, res) => {
     month: m, year: y,
   });
 });
+
+// PUT /api/collections/:id — correct a collection (office only)
+router.put('/:id', authorize('ADMIN', 'OFFICE'), async (req, res) => {
+  const { litres, collectedAt, notes } = req.body;
+  const collection = await prisma.milkCollection.update({
+    where: { id: Number(req.params.id) },
+    data: {
+      ...(litres !== undefined ? { litres: Number(litres) } : {}),
+      ...(collectedAt ? { collectedAt: new Date(collectedAt) } : {}),
+    },
+    include: { farmer: { select: { code: true, name: true } }, route: { select: { name: true } } },
+  });
+  res.json(collection);
+});
+
+// DELETE /api/collections/:id — delete wrong entry (admin only)
+router.delete('/:id', authorize('ADMIN'), async (req, res) => {
+  await prisma.milkCollection.delete({ where: { id: Number(req.params.id) } });
+  res.json({ success: true });
+});
+
+// POST /api/collections/manual — manual entry by office for a farmer
+router.post('/manual', authorize('ADMIN', 'OFFICE'), async (req, res) => {
+  const { farmerId, farmerCode, routeId, litres, collectedAt, graderId } = req.body;
+  let fId = farmerId;
+  if (!fId && farmerCode) {
+    const farmer = await prisma.farmer.findFirst({ where: { code: farmerCode.toUpperCase() } });
+    if (!farmer) return res.status(404).json({ error: `Farmer ${farmerCode} not found` });
+    fId = farmer.id;
+  }
+  const farmer = await prisma.farmer.findUnique({
+    where: { id: Number(fId) },
+    include: { route: { select: { id: true } } },
+  });
+  if (!farmer) return res.status(404).json({ error: 'Farmer not found' });
+
+  const collection = await prisma.milkCollection.create({
+    data: {
+      farmerId:    Number(fId),
+      routeId:     routeId ? Number(routeId) : (farmer.route?.id || farmer.routeId),
+      graderId:    graderId ? Number(graderId) : null,
+      litres:      Number(litres),
+      collectedAt: collectedAt ? new Date(collectedAt) : new Date(),
+    },
+    include: { farmer: { select: { code: true, name: true } }, route: { select: { name: true } } },
+  });
+  res.status(201).json(collection);
+});
+
+// POST /api/collections/advance/correct — correct a b/f balance
+router.post('/advance/correct', authorize('ADMIN', 'OFFICE'), async (req, res) => {
+  const { farmerId, farmerCode, amount, notes } = req.body;
+  let fId = farmerId;
+  if (!fId && farmerCode) {
+    const farmer = await prisma.farmer.findFirst({ where: { code: farmerCode.toUpperCase() } });
+    if (!farmer) return res.status(404).json({ error: `Farmer ${farmerCode} not found` });
+    fId = farmer.id;
+  }
+  // Record as a deduction correction (negative amount = b/f reduction)
+  const deduction = await prisma.farmerDeduction.create({
+    data: {
+      farmerId:      Number(fId),
+      amount:        Number(amount),
+      reason:        `B/f correction: ${notes || 'Office adjustment'}`,
+      deductionDate: new Date(),
+      periodMonth:   new Date().getMonth() + 1,
+      periodYear:    new Date().getFullYear(),
+    },
+    include: { farmer: { select: { code: true, name: true } } },
+  });
+  res.status(201).json(deduction);
+});

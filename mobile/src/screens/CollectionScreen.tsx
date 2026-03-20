@@ -5,7 +5,7 @@ import {
   Alert, ActivityIndicator, KeyboardAvoidingView, Platform,
   ScrollView, FlatList,
 } from 'react-native';
-import { savePendingCollection, searchCachedFarmers, getCachedFarmersByRoute, getCachedFarmerCount } from '../utils/offlineStore';
+import { savePendingCollection, searchCachedFarmers, getCachedFarmersByRoute, getCachedFarmerCount, getAllCollections } from '../utils/offlineStore';
 import ReceiptScreen from './ReceiptScreen';
 import { syncPendingCollections, downloadFarmersForGrader } from '../utils/syncService';
 import { farmersApi } from '../api/client';
@@ -94,17 +94,38 @@ export default function CollectionScreen({ employee, onBack, routeId, routeName 
     const l = parseFloat(litres);
     setSaving(true);
     try {
-      await savePendingCollection({
-        farmerId:    selectedFarmer.id,
-        farmerName:  selectedFarmer.name,
-        routeId:     selectedFarmer.routeId ?? selectedFarmer.route?.id ?? routeId,
-        graderId:    employee.id,
-        litres:      l,
-        collectedAt: new Date(collectionDate + 'T' + new Date().toTimeString().split(' ')[0]).toISOString(),
-      });
+      const collectedAtStr = new Date(collectionDate + 'T' + new Date().toTimeString().split(' ')[0]).toISOString();
+
+      // Check if this farmer already has a record for this date — if so, update it
+      const all = await getAllCollections();
+      const datePrefix = collectionDate;
+      const existing = all.find(r =>
+        (r.farmer_id === selectedFarmer.id || r.farmerId === selectedFarmer.id) &&
+        (r.collected_at || r.collectedAt || '').startsWith(datePrefix) &&
+        r.synced === 0
+      );
+
+      if (existing) {
+        // Replace the existing unsynced record
+        const updated = all.map(r => r.id === existing.id
+          ? { ...r, litres: l, collected_at: collectedAtStr, collectedAt: collectedAtStr }
+          : r
+        );
+        const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+        await AsyncStorage.setItem('gutoria_pending_collections', JSON.stringify(updated));
+      } else {
+        await savePendingCollection({
+          farmerId:    selectedFarmer.id,
+          farmerName:  selectedFarmer.name,
+          routeId:     selectedFarmer.routeId ?? selectedFarmer.route?.id ?? routeId,
+          graderId:    employee.id,
+          litres:      l,
+          collectedAt: collectedAtStr,
+        });
+      }
 
       const newRecord = {
-        id: Date.now(),
+        id: existing?.id || Date.now(),
         farmerName: selectedFarmer.name,
         farmerCode: selectedFarmer.code,
         routeName: selectedFarmer.route?.name ?? routeName ?? 'Route',
@@ -112,7 +133,10 @@ export default function CollectionScreen({ employee, onBack, routeId, routeName 
         time: new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }),
       };
 
-      setSessionSaved(prev => [newRecord, ...prev]);
+      setSessionSaved(prev => {
+        const without = prev.filter(r => r.farmerCode !== selectedFarmer.code || !collectionDate.endsWith(r.time?.split(':')[0] || ''));
+        return [newRecord, ...without];
+      });
 
       // Show receipt
       const cumulative = sessionSaved
@@ -124,6 +148,8 @@ export default function CollectionScreen({ employee, onBack, routeId, routeName 
       setSearch('');
       setLitres('');
       setFarmers([]);
+      // Reset to today after saving backdated
+      if (collectionDate !== today) setCollectionDate(today);
 
       // Background sync
       syncPendingCollections().catch(() => {});
@@ -253,20 +279,60 @@ export default function CollectionScreen({ employee, onBack, routeId, routeName 
 
         {showDatePicker && (
           <View style={{ backgroundColor: '#132d48', borderRadius: 16, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: '#1e3d5c' }}>
-            <Text style={{ color: '#4a7090', fontSize: 10, marginBottom: 8 }}>SELECT DATE (for backdated entry)</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-              {Array.from({ length: 7 }, (_, i) => {
-                const d = new Date(); d.setDate(d.getDate() - i);
-                const str = d.toISOString().split('T')[0];
-                const label = i === 0 ? 'Today' : i === 1 ? 'Yesterday' : d.toLocaleDateString('en-KE', { weekday: 'short', day: 'numeric', month: 'short' });
-                return (
-                  <TouchableOpacity key={str} onPress={() => { setCollectionDate(str); setShowDatePicker(false); }}
-                    style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: collectionDate === str ? GREEN : '#1e3d5c', borderWidth: 1, borderColor: collectionDate === str ? GREEN : '#2a4d6a' }}>
-                    <Text style={{ color: collectionDate === str ? '#000' : '#fff', fontSize: 11, fontWeight: collectionDate === str ? '700' : '400' }}>{label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <Text style={{ color: '#4a7090', fontSize: 10, letterSpacing: 1 }}>
+                SELECT DATE — {new Date(collectionDate).toLocaleDateString('en-KE', { month: 'long', year: 'numeric' })}
+              </Text>
+              {collectionDate !== today && (
+                <TouchableOpacity onPress={() => { setCollectionDate(today); setShowDatePicker(false); }}
+                  style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: GREEN, borderRadius: 8 }}>
+                  <Text style={{ color: '#000', fontSize: 10, fontWeight: '700' }}>↩ Back to Today</Text>
+                </TouchableOpacity>
+              )}
             </View>
+            {/* Day headers */}
+            <View style={{ flexDirection: 'row', marginBottom: 4 }}>
+              {['S','M','T','W','T','F','S'].map((d, i) => (
+                <Text key={i} style={{ flex: 1, textAlign: 'center', color: '#4a7090', fontSize: 9, fontWeight: '700' }}>{d}</Text>
+              ))}
+            </View>
+            {/* Calendar grid for current month */}
+            {(() => {
+              const now2 = new Date();
+              const year2 = now2.getFullYear();
+              const month2 = now2.getMonth();
+              const firstDay = new Date(year2, month2, 1).getDay();
+              const daysInMonth2 = new Date(year2, month2 + 1, 0).getDate();
+              const cells = [];
+              // empty cells before first day
+              for (let i = 0; i < firstDay; i++) cells.push(null);
+              for (let d = 1; d <= daysInMonth2; d++) cells.push(d);
+              const rows = [];
+              for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
+              return rows.map((row, ri) => (
+                <View key={ri} style={{ flexDirection: 'row', marginBottom: 4 }}>
+                  {row.map((day, ci) => {
+                    if (!day) return <View key={ci} style={{ flex: 1 }} />;
+                    const dateStr = `${year2}-${String(month2 + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                    const isSelected = collectionDate === dateStr;
+                    const isFuture = day > now2.getDate() && month2 >= now2.getMonth() && year2 >= now2.getFullYear();
+                    const isToday = dateStr === today;
+                    return (
+                      <TouchableOpacity key={ci} disabled={isFuture}
+                        onPress={() => { setCollectionDate(dateStr); setShowDatePicker(false); }}
+                        style={{ flex: 1, margin: 1, paddingVertical: 6, borderRadius: 8, alignItems: 'center',
+                          backgroundColor: isSelected ? GREEN : isToday ? '#0a2a14' : '#1e3d5c',
+                          borderWidth: isToday ? 1 : 0, borderColor: GREEN,
+                          opacity: isFuture ? 0.3 : 1 }}>
+                        <Text style={{ color: isSelected ? '#000' : '#fff', fontSize: 12, fontWeight: isSelected || isToday ? '700' : '400' }}>{day}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                  {/* pad last row */}
+                  {row.length < 7 && Array.from({ length: 7 - row.length }).map((_, i) => <View key={`p${i}`} style={{ flex: 1 }} />)}
+                </View>
+              ));
+            })()}
           </View>
         )}
 

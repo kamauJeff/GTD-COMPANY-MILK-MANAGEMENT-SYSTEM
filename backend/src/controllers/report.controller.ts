@@ -260,10 +260,11 @@ export async function getDailyLedger(req: Request, res: Response) {
   // Use findMany instead of groupBy to avoid TypeScript circular type issues
   const [collections, receipts, routes] = await Promise.all([
     prisma.milkCollection.findMany({ where: collWhere, select: { routeId: true, litres: true, farmerId: true } }),
+    // FactoryReceipt has no routeId — get grader's routeId via Employee relation
     prisma.factoryReceipt.findMany({
-      where: { receivedAt: { gte: d, lt: next }, ...(routeId ? { routeId: Number(routeId) } : {}) },
-      select: { routeId: true, litres: true },
-    }).catch(() => [] as { routeId: number; litres: any }[]),
+      where: { receivedAt: { gte: d, lt: next } },
+      include: { grader: true },
+    }).catch(() => [] as any[]),
     prisma.route.findMany({
       include: { supervisor: { select: { id: true, name: true, code: true } } },
       orderBy: { code: 'asc' },
@@ -278,9 +279,9 @@ export async function getDailyLedger(req: Request, res: Response) {
     collMap.set(rid, { litres: existing.litres + Number(c.litres), count: existing.count + 1 });
   }
   const receivedMap = new Map<number, number>();
-  for (const r of receipts) {
-    const rid = (r as any).routeId ?? 0;
-    receivedMap.set(rid, (receivedMap.get(rid) || 0) + Number((r as any).litres));
+  for (const r of receipts as any[]) {
+    const rid = r.grader?.routeId ?? 0;
+    if (rid) receivedMap.set(rid, (receivedMap.get(rid) || 0) + Number(r.litres));
   }
 
   const routeData = routes

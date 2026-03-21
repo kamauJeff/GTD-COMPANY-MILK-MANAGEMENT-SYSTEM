@@ -74,7 +74,7 @@ export default function ShopsPage() {
 
   const confirmTripMut = useMutation({
     mutationFn: (id: number) => api.post(`/api/drivers/trips/${id}/confirm`, {}),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['trips'] }); showSuccess('Trip confirmed'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['trips'] }); qc.invalidateQueries({ queryKey: ['report-shops'] }); qc.invalidateQueries({ queryKey: ['report-daily-ledger'] }); qc.invalidateQueries({ queryKey: ['litres-ledger'] }); showSuccess('Trip confirmed'); },
   });
 
   const deleteDropMut = useMutation({
@@ -92,7 +92,7 @@ export default function ShopsPage() {
       expectedRevenue: Number(saleForm.litresSold) * 60,
       variance: (Number(saleForm.cashCollected) + Number(saleForm.tillAmount || 0)) - (Number(saleForm.litresSold) * 60),
     }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['shop-sales'] }); qc.invalidateQueries({ queryKey: ['shops-monthly'] }); qc.invalidateQueries({ queryKey: ['daily-summary'] }); setSaleForm(f => ({ ...f, litresSold: '', cashCollected: '', tillAmount: '' })); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['shop-sales'] }); qc.invalidateQueries({ queryKey: ['shops-monthly'] }); qc.invalidateQueries({ queryKey: ['daily-summary'] }); qc.invalidateQueries({ queryKey: ['report-shops'] }); qc.invalidateQueries({ queryKey: ['report-daily-ledger'] }); qc.invalidateQueries({ queryKey: ['litres-ledger'] }); setSaleForm(f => ({ ...f, litresSold: '', cashCollected: '', tillAmount: '' })); },
     onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
   });
 

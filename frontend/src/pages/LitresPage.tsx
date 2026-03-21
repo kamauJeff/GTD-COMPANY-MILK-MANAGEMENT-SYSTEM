@@ -30,18 +30,18 @@ export default function LitresPage() {
 
   const saveMut = useMutation({
     mutationFn: (d: any) => api.post('/api/factory/litres-ledger', d),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['litres-ledger'] }); setEditCell(null); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['litres-ledger'] }); qc.invalidateQueries({ queryKey: ['report-daily-ledger'] }); setEditCell(null); },
     onError: (e: any) => alert(e?.response?.data?.error || 'Failed to save'),
   });
 
   const setBalMut = useMutation({
     mutationFn: (bal: number) => api.post('/api/factory/litres-ledger/set-balance', { month, year, balance: bal }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['litres-ledger'] }); setOpeningBal(''); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['litres-ledger'] }); qc.invalidateQueries({ queryKey: ['report-daily-ledger'] }); setOpeningBal(''); },
   });
 
   const addRowMut = useMutation({
     mutationFn: (d: any) => api.post('/api/factory/litres-ledger/add-row', d),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['litres-ledger'] }); setShowAddRow(null); setNewRowName(''); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['litres-ledger'] }); qc.invalidateQueries({ queryKey: ['report-daily-ledger'] }); setShowAddRow(null); setNewRowName(''); },
     onError: (e: any) => alert(e?.response?.data?.error || 'Failed'),
   });
 

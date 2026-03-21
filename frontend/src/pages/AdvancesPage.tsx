@@ -83,7 +83,7 @@ export default function AdvancesPage() {
 
   const deleteMut = useMutation({
     mutationFn: (id: number) => api.delete(`/api/payments/advance/${id}`),
-    onSuccess: () => { showSuccess('Deleted'); qc.invalidateQueries({ queryKey: ['advances-page'] }); },
+    onSuccess: () => { showSuccess('Deleted'); qc.invalidateQueries({ queryKey: ['advances-page'] }); qc.invalidateQueries({ queryKey: ['collection-journal'] }); qc.invalidateQueries({ queryKey: ['payments-preview'] }); },
     onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
   });
 

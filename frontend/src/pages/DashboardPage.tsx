@@ -5,8 +5,8 @@ import { format } from 'date-fns';
 
 export default function DashboardPage() {
   const today = format(new Date(), 'yyyy-MM-dd');
-  const { data: totals } = useQuery({ queryKey: ['daily-totals', today], queryFn: () => collectionsApi.dailyTotals(today) });
-  const { data: farmers } = useQuery({ queryKey: ['farmers-count'], queryFn: () => farmersApi.list({ limit: 1 }) });
+  const { data: totals } = useQuery({ queryKey: ['daily-totals', today], queryFn: () => collectionsApi.dailyTotals(today), refetchInterval: 30000 });
+  const { data: farmers } = useQuery({ queryKey: ['farmers-count'], queryFn: () => farmersApi.list({ limit: 1 }), staleTime: 5 * 60 * 1000 });
   const { data: routes } = useQuery({ queryKey: ['routes'], queryFn: () => routesApi.list() });
 
   const routeData: any[] = totals?.data ?? [];
@@ -20,8 +20,8 @@ export default function DashboardPage() {
       {/* Stat cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <StatCard label="Today's Milk" value={`${totalLitres.toFixed(0)}L`} color="green" />
-        <StatCard label="Active Farmers" value={farmers?.data?.total ?? 'â€“'} color="blue" />
-        <StatCard label="Active Routes" value={routes?.data?.length ?? 'â€“'} color="purple" />
+        <StatCard label="Active Farmers" value={farmers?.data?.total ?? '–'} color="blue" />
+        <StatCard label="Active Routes" value={routes?.data?.length ?? '–'} color="purple" />
         <StatCard label="Routes Reporting" value={routeData.length} color="orange" />
       </div>
 
@@ -63,4 +63,3 @@ function StatCard({ label, value, color }: { label: string; value: any; color: s
     </div>
   );
 }
-

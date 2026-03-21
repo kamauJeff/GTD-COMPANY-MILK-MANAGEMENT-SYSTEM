@@ -46,13 +46,22 @@ export default function Layout() {
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
   }, []);
 
-  // Auto-refresh every 60s
+  // Auto-refresh every 30s when online
   useEffect(() => {
     const interval = setInterval(() => {
-      qc.invalidateQueries();
-      setLastRefresh(new Date());
-    }, 60000);
+      if (navigator.onLine) {
+        qc.invalidateQueries();
+        setLastRefresh(new Date());
+      }
+    }, 30000);
     return () => clearInterval(interval);
+  }, [qc]);
+
+  // Refresh immediately when coming back online
+  useEffect(() => {
+    const onOnline = () => { qc.invalidateQueries(); setLastRefresh(new Date()); };
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
   }, [qc]);
 
   const manualRefresh = () => {

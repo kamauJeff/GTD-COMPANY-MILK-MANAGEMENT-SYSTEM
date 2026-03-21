@@ -37,7 +37,7 @@ export default function FactoryPage() {
 
   const createReceiptMut = useMutation({
     mutationFn: () => factoryApi.createReceipt({ graderId: Number(receiptForm.graderId), litres: Number(receiptForm.litres), receivedAt: receiptForm.receivedAt, notes: receiptForm.notes }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['receipts'] }); qc.invalidateQueries({ queryKey: ['factory-stats'] }); setReceiptForm(f => ({ ...f, litres: '', notes: '' })); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['receipts'] }); qc.invalidateQueries({ queryKey: ['factory-stats'] }); qc.invalidateQueries({ queryKey: ['report-daily-ledger'] }); qc.invalidateQueries({ queryKey: ['litres-ledger'] }); setReceiptForm(f => ({ ...f, litres: '', notes: '' })); },
     onError: (e: any) => alert(e?.response?.data?.error || 'Failed'),
   });
 
@@ -53,7 +53,7 @@ export default function FactoryPage() {
   
   const createBatchMut = useMutation({
     mutationFn: () => factoryApi.createBatch({ ...batchForm, inputLitres: Number(batchForm.inputLitres), outputLitres: Number(batchForm.outputLitres), lossLitres: Number(batchForm.lossLitres || 0) }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['batches'] }); qc.invalidateQueries({ queryKey: ['next-batch'] }); setBatchForm(f => ({ ...f, inputLitres: '', outputLitres: '', lossLitres: '', qualityNotes: '' })); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['batches'] }); qc.invalidateQueries({ queryKey: ['next-batch'] }); qc.invalidateQueries({ queryKey: ['factory-stats'] }); qc.invalidateQueries({ queryKey: ['report-daily-ledger'] }); setBatchForm(f => ({ ...f, inputLitres: '', outputLitres: '', lossLitres: '', qualityNotes: '' })); },
     onError: (e: any) => alert(e?.response?.data?.error || 'Failed'),
   });
 

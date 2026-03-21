@@ -132,11 +132,12 @@ router.get('/', async (req, res) => {
 
   for (const farmer of farmers) {
     const totalLitres    = collMap.get(farmer.id) || 0;
-    const totalAdvances  = advMap.get(farmer.id) || 0;
+    const totalAdvances  = Number(advMap.get(farmer.id) || 0);
     if (totalLitres === 0 && totalAdvances === 0) continue;
-    const grossPay       = Number(totalLitres) * Number(farmer.pricePerLitre);
-    const totalDeductions = dedMap.get(farmer.id) || 0;
-    const netPay         = Number(grossPay) - Number(totalAdvances) - Number(totalDeductions);
+    const grossPay        = Number(totalLitres) * Number(farmer.pricePerLitre);
+    const otherDeductions = Number(dedMap.get(farmer.id) || 0);
+    const totalDeductions = totalAdvances + otherDeductions; // combined: advances + other charges
+    const netPay          = grossPay - totalDeductions;
     const r = {
       farmer: { id: farmer.id, code: farmer.code, name: farmer.name, phone: farmer.phone,
         mpesaPhone: farmer.mpesaPhone, paymentMethod: farmer.paymentMethod,
@@ -154,7 +155,7 @@ router.get('/', async (req, res) => {
     byRoute[key].totalLitres      += totalLitres;
     byRoute[key].totalGross       += grossPay;
     byRoute[key].totalAdvances    += totalAdvances;
-    byRoute[key].totalDeductions  += Number(totalDeductions);
+    byRoute[key].totalDeductions  += totalDeductions;
     byRoute[key].totalNet         += netPay > 0 ? netPay : 0;
     if (netPay < 0) byRoute[key].negativeCount++;
   }
@@ -167,138 +168,124 @@ router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
   const { month, year, isMidMonth, routeId } = req.body;
   const m = Number(month); const y = Number(year); const mid = !!isMidMonth;
 
-  // ── Date ranges ──────────────────────────────────────────────────────────────
-  // Mid-month:  collections 1–15,  advances 5th & 10th only
-  // End-month for paidOn15th farmers:  collections 16–end,  advances 20th & 25th only
-  // End-month for full-month farmers:  collections 1–end,   advances 5,10,20,25
+  // ── Date ranges ─────────────────────────────────────────────────────────────
   const midStart  = new Date(y, m - 1, 1);
-  const midEnd    = new Date(y, m - 1, 16);   // exclusive → days 1-15
+  const midEnd    = new Date(y, m - 1, 16);   // days 1-15
   const fullStart = new Date(y, m - 1, 1);
-  const fullEnd   = new Date(y, m, 1);         // exclusive → full month
-  const endStart  = new Date(y, m - 1, 16);   // 16th onwards for mid-month farmers
-  const endEnd    = new Date(y, m, 1);
+  const fullEnd   = new Date(y, m, 1);         // full month
+  const endStart  = new Date(y, m - 1, 16);   // 16th onwards
 
-  // ── Farmer filter ────────────────────────────────────────────────────────────
+  // ── Fetch farmers ────────────────────────────────────────────────────────────
   const whereRoute: any = { isActive: true };
   if (routeId) whereRoute.routeId = Number(routeId);
-  if (mid) whereRoute.paidOn15th = true;         // mid-month run = paidOn15th farmers only
+  if (mid) whereRoute.paidOn15th = true;
 
   const farmers = await prisma.farmer.findMany({
     where: whereRoute,
     select: { id: true, pricePerLitre: true, paidOn15th: true },
   });
+  if (farmers.length === 0) return res.json({ created: 0, message: 'No farmers found' });
+
   const farmerIds = farmers.map(f => f.id);
-  if (farmerIds.length === 0) return res.json({ created: 0, message: 'No farmers found' });
 
-  // For end-month run: separate the two groups
-  // Group A: paidOn15th farmers → only 16-end collections + 20th/25th advances
-  // Group B: full-month farmers → full 1-end collections + all advances
-  // If mid is true: only Group A farmers, 1-15 window
-  const groupA_ids = farmers.filter(f => f.paidOn15th).map(f => f.id);
-  const groupB_ids = farmers.filter(f => !f.paidOn15th).map(f => f.id);
-
-  // ── Fetch collections ─────────────────────────────────────────────────────────
-  const collectionsPromises = [];
-  if (mid) {
-    // Mid-month: ALL selected farmers, days 1-15
-    collectionsPromises.push(
-      prisma.milkCollection.groupBy({ by: ['farmerId'], where: { farmerId: { in: farmerIds }, collectedAt: { gte: midStart, lt: midEnd } }, _sum: { litres: true } })
-    );
-  } else {
-    // End-month: Group A = days 16-end, Group B = days 1-end
-    collectionsPromises.push(
-      groupA_ids.length > 0
-        ? prisma.milkCollection.groupBy({ by: ['farmerId'], where: { farmerId: { in: groupA_ids }, collectedAt: { gte: endStart, lt: endEnd } }, _sum: { litres: true } })
-        : Promise.resolve([]),
-      groupB_ids.length > 0
-        ? prisma.milkCollection.groupBy({ by: ['farmerId'], where: { farmerId: { in: groupB_ids }, collectedAt: { gte: fullStart, lt: fullEnd } }, _sum: { litres: true } })
-        : Promise.resolve([])
-    );
-  }
-
-  // ── Fetch advances ────────────────────────────────────────────────────────────
-  const advancesPromises = [];
-  if (mid) {
-    // Mid-month advances: 5th and 10th only
-    advancesPromises.push(
-      prisma.farmerAdvance.groupBy({ by: ['farmerId'], where: { farmerId: { in: farmerIds }, advanceDate: { gte: midStart, lt: midEnd } }, _sum: { amount: true } })
-    );
-  } else {
-    // End-month Group A: 20th and 25th only
-    // End-month Group B: full month advances
-    advancesPromises.push(
-      groupA_ids.length > 0
-        ? prisma.farmerAdvance.groupBy({ by: ['farmerId'], where: { farmerId: { in: groupA_ids }, advanceDate: { gte: endStart, lt: endEnd } }, _sum: { amount: true } })
-        : Promise.resolve([]),
-      groupB_ids.length > 0
-        ? prisma.farmerAdvance.groupBy({ by: ['farmerId'], where: { farmerId: { in: groupB_ids }, advanceDate: { gte: fullStart, lt: fullEnd } }, _sum: { amount: true } })
-        : Promise.resolve([])
-    );
-  }
-
-  // ── Fetch b/f negatives for end-month ─────────────────────────────────────────
-  // Any farmer who had a negative mid-month payment carries it forward
-  let bfMap = new Map<number, number>();
-  if (!mid) {
-    const midNegatives = await prisma.farmerPayment.findMany({
+  // ── Fetch ALL collections for the full month — we'll filter per farmer below ─
+  // This avoids complex split queries
+  const [allCollections, allAdvances, deductions, midNegatives] = await Promise.all([
+    // All collections for the full month
+    prisma.milkCollection.groupBy({
+      by: ['farmerId'],
+      where: { farmerId: { in: farmerIds }, collectedAt: { gte: fullStart, lt: fullEnd } },
+      _sum: { litres: true },
+    }),
+    // All advances for the full month
+    prisma.farmerAdvance.findMany({
+      where: { farmerId: { in: farmerIds }, advanceDate: { gte: fullStart, lt: fullEnd } },
+      select: { farmerId: true, amount: true, advanceDate: true },
+    }),
+    // Deductions this period
+    prisma.farmerDeduction.groupBy({
+      by: ['farmerId'],
+      where: { farmerId: { in: farmerIds }, periodMonth: m, periodYear: y },
+      _sum: { amount: true },
+    }),
+    // Mid-month negatives (for end-month b/f)
+    !mid ? prisma.farmerPayment.findMany({
       where: { farmerId: { in: farmerIds }, periodMonth: m, periodYear: y, isMidMonth: true, netPay: { lt: 0 } },
       select: { farmerId: true, netPay: true },
-    });
-    for (const p of midNegatives) {
-      bfMap.set(p.farmerId, Math.abs(Number(p.netPay)));
-    }
-  }
-
-  // ── Fetch other deductions ─────────────────────────────────────────────────────
-  const deductions = await prisma.farmerDeduction.groupBy({
-    by: ['farmerId'],
-    where: { farmerId: { in: farmerIds }, periodMonth: m, periodYear: y },
-    _sum: { amount: true },
-  });
-
-  // ── Resolve all queries ────────────────────────────────────────────────────────
-  const [collResults, advResults] = await Promise.all([
-    Promise.all(collectionsPromises),
-    Promise.all(advancesPromises),
+    }) : Promise.resolve([]),
   ]);
 
-  // Merge collection results into single map
-  const collMap = new Map<number, number>();
-  for (const group of collResults) {
-    for (const c of group) collMap.set(c.farmerId, (collMap.get(c.farmerId) || 0) + Number(c._sum.litres || 0));
-  }
-  const advMap = new Map<number, number>();
-  for (const group of advResults) {
-    for (const a of group) advMap.set(a.farmerId, (advMap.get(a.farmerId) || 0) + Number(a._sum.amount || 0));
-  }
-  const dedMap  = new Map(deductions.map(d => [d.farmerId, Number(d._sum.amount || 0)]));
-  const priceMap = new Map(farmers.map(f => [f.id, Number(f.pricePerLitre)]));
+  // ── Build lookup maps ────────────────────────────────────────────────────────
+  const fullCollMap = new Map(allCollections.map(c => [c.farmerId, Number(c._sum.litres || 0)]));
+  const dedMap      = new Map(deductions.map(d => [d.farmerId, Number(d._sum.amount || 0)]));
+  const bfMap       = new Map((midNegatives as any[]).map(p => [p.farmerId, Math.abs(Number(p.netPay))]));
 
-  // ── Compute payment records ───────────────────────────────────────────────────
+  // Build per-farmer advance maps split by date
+  const midAdvMap  = new Map<number, number>(); // advances 1-15
+  const endAdvMap  = new Map<number, number>(); // advances 16-end
+  const fullAdvMap = new Map<number, number>(); // all advances
+  for (const a of allAdvances) {
+    const d = new Date(a.advanceDate).getDate();
+    const amt = Number(a.amount);
+    fullAdvMap.set(a.farmerId, (fullAdvMap.get(a.farmerId) || 0) + amt);
+    if (d <= 15) midAdvMap.set(a.farmerId,  (midAdvMap.get(a.farmerId)  || 0) + amt);
+    else          endAdvMap.set(a.farmerId,  (endAdvMap.get(a.farmerId)  || 0) + amt);
+  }
+
+  // Mid-month collections (1-15) — filter from full month data
+  const midCollections = await prisma.milkCollection.groupBy({
+    by: ['farmerId'],
+    where: { farmerId: { in: farmerIds }, collectedAt: { gte: midStart, lt: midEnd } },
+    _sum: { litres: true },
+  });
+  const midCollMap = new Map(midCollections.map(c => [c.farmerId, Number(c._sum.litres || 0)]));
+
+  // End-month collections (16-end)
+  const endCollections = await prisma.milkCollection.groupBy({
+    by: ['farmerId'],
+    where: { farmerId: { in: farmerIds }, collectedAt: { gte: endStart, lt: fullEnd } },
+    _sum: { litres: true },
+  });
+  const endCollMap = new Map(endCollections.map(c => [c.farmerId, Number(c._sum.litres || 0)]));
+
+  // ── Compute payment records ──────────────────────────────────────────────────
   const records: any[] = [];
+
   for (const f of farmers) {
-    const litres = collMap.get(f.id) || 0;
+    const price = Number(f.pricePerLitre) || 46;
+    let litres: number;
+    let advances: number;
+
+    if (mid) {
+      litres   = Number(midCollMap.get(f.id)  || 0);
+      advances = Number(midAdvMap.get(f.id)   || 0);
+    } else if (f.paidOn15th) {
+      litres   = Number(endCollMap.get(f.id)  || 0);
+      advances = Number(endAdvMap.get(f.id)   || 0);
+    } else {
+      litres   = Number(fullCollMap.get(f.id) || 0);
+      advances = Number(fullAdvMap.get(f.id)  || 0);
+    }
+
     if (litres === 0) continue;
 
-    const price         = priceMap.get(f.id) || 46;
-    const grossPay      = Number(litres) * Number(price);
-    const totalAdvances = advMap.get(f.id) || 0;
-    const deductionAmt  = dedMap.get(f.id) || 0;
-    const bfCarried     = bfMap.get(f.id) || 0;   // negative from mid-month
-    const totalDeductions = Number(totalAdvances) + Number(deductionAmt) + Number(bfCarried);
-    const netPay        = Number(grossPay) - totalDeductions;
+    const grossPay        = litres * price;
+    const deductionAmt    = Number(dedMap.get(f.id) || 0);
+    const bfCarried       = (!mid && f.paidOn15th) ? Number(bfMap.get(f.id) || 0) : 0;
+    const totalDeductions = advances + deductionAmt + bfCarried;
+    const netPay          = grossPay - totalDeductions;
 
     records.push({
       farmerId: f.id, periodMonth: m, periodYear: y, isMidMonth: mid,
-      grossPay, totalAdvances, totalDeductions, netPay,
+      grossPay, totalAdvances: advances, totalDeductions, netPay,
     });
   }
 
   if (records.length === 0) return res.json({ created: 0, message: 'No collections found for this period' });
 
-  // ── Upsert in batches ─────────────────────────────────────────────────────────
+  // ── Upsert in batches of 100 ─────────────────────────────────────────────────
   let created = 0;
-  const BATCH = 50;
+  const BATCH = 100;
   for (let i = 0; i < records.length; i += BATCH) {
     const batch = records.slice(i, i + BATCH);
     await Promise.all(batch.map(r => prisma.farmerPayment.upsert({

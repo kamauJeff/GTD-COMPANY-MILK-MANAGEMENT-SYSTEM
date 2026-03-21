@@ -34,19 +34,38 @@ router.get('/statement', async (req, res) => {
   });
   if (!farmer) return res.status(404).json({ error: 'Farmer not found' });
 
-  // Date range: mid-month = 1-15, end-month = 1-last day
-  const start   = new Date(y, m - 1, 1);
-  const midEnd  = new Date(y, m - 1, 16); // exclusive, so day 15 included
-  const fullEnd = new Date(y, m, 1);
-  const end = mid ? midEnd : fullEnd;
+  // ── Determine correct date range based on farmer type and period ─────────────
+  // Mid-month request:  always 1–15 (regardless of farmer type)
+  // End-month request + paidOn15th farmer:  16–end (they were already paid 1–15)
+  // End-month request + NOT paidOn15th farmer: full 1–end
+  const midStart  = new Date(y, m - 1, 1);
+  const midEnd    = new Date(y, m - 1, 16);   // exclusive
+  const endStart  = new Date(y, m - 1, 16);
+  const fullEnd   = new Date(y, m, 1);
 
-  // For advances: mid-month only includes 5th and 10th; end-month includes all
-  const advStart = start;
-  const advEnd   = mid ? midEnd : fullEnd;
+  let collStart: Date, collEnd: Date, advStart: Date, advEnd: Date;
+  let periodLabel: string;
+  const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  if (mid) {
+    collStart = midStart; collEnd = midEnd;
+    advStart  = midStart; advEnd  = midEnd;
+    periodLabel = `Mid Month (1–15 ${MONTH_NAMES[m-1]} ${y})`;
+  } else if (farmer.paidOn15th) {
+    // Already paid 1–15 → end month is only 16–end
+    collStart = endStart; collEnd = fullEnd;
+    advStart  = endStart; advEnd  = fullEnd;
+    periodLabel = `End Month (16–${new Date(y, m, 0).getDate()} ${MONTH_NAMES[m-1]} ${y})`;
+  } else {
+    // Full month payer → full 1–end
+    collStart = midStart; collEnd = fullEnd;
+    advStart  = midStart; advEnd  = fullEnd;
+    periodLabel = `Full Month (${MONTH_NAMES[m-1]} ${y})`;
+  }
 
   const [collections, advances, deductions] = await Promise.all([
     prisma.milkCollection.findMany({
-      where: { farmerId: farmer.id, collectedAt: { gte: start, lt: end } },
+      where: { farmerId: farmer.id, collectedAt: { gte: collStart, lt: collEnd } },
       orderBy: { collectedAt: 'asc' },
     }),
     prisma.farmerAdvance.findMany({
@@ -90,26 +109,27 @@ router.get('/statement', async (req, res) => {
   }
 
   // B/f: check previous month negative payment OR current month b/f deductions
-  const prevMonth = m === 1 ? 12 : m - 1;
-  const prevYear  = m === 1 ? y - 1 : y;
-
-  const [prevNeg, bfDeduction] = await Promise.all([
-    prisma.farmerPayment.findFirst({
-      where: { farmerId: farmer.id, periodMonth: prevMonth, periodYear: prevYear, netPay: { lt: 0 }, status: 'PAID' },
-    }),
-    // Office-entered b/f correction
-    prisma.farmerDeduction.findFirst({
-      where: { farmerId: farmer.id, periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
-      orderBy: { deductionDate: 'desc' },
-    }),
-  ]);
-
-  // Use office correction if present, else use previous month negative
+  // B/f: for end-month of a paidOn15th farmer, check if mid-month was negative
   let bfBalance = 0;
-  if (bfDeduction) {
-    bfBalance = Number(bfDeduction.amount);
-  } else if (prevNeg) {
-    bfBalance = Math.abs(Number(prevNeg.netPay));
+  if (!mid) {
+    const [midNeg, bfDeduction, prevNeg] = await Promise.all([
+      // Same-month mid-month negative (most important — unpaid mid-month carries forward)
+      prisma.farmerPayment.findFirst({
+        where: { farmerId: farmer.id, periodMonth: m, periodYear: y, isMidMonth: true, netPay: { lt: 0 } },
+      }),
+      // Office-entered b/f correction
+      prisma.farmerDeduction.findFirst({
+        where: { farmerId: farmer.id, periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
+        orderBy: { deductionDate: 'desc' },
+      }),
+      // Previous month negative payment
+      prisma.farmerPayment.findFirst({
+        where: { farmerId: farmer.id, periodMonth: m === 1 ? 12 : m - 1, periodYear: m === 1 ? y - 1 : y, netPay: { lt: 0 }, status: 'PAID' },
+      }),
+    ]);
+    if (bfDeduction) bfBalance = Number(bfDeduction.amount);
+    else if (midNeg) bfBalance = Math.abs(Number(midNeg.netPay));
+    else if (prevNeg) bfBalance = Math.abs(Number(prevNeg.netPay));
   }
 
   // Other deductions (non-b/f)
@@ -124,7 +144,9 @@ router.get('/statement', async (req, res) => {
     farmer: { ...farmer, route: farmer.route },
     daysInMonth: new Date(y, m, 0).getDate(),
     isMidMonth: mid,
-    period: mid ? `Mid Month (1–15 ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1]} ${y})` : `End Month (${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1]} ${y})`,
+    paidOn15th: farmer.paidOn15th,
+    period: periodLabel,
+    collectionRange: { startDay: collStart.getDate(), endDay: new Date(y, m - 1, collEnd.getDate() - 1).getDate() },
     dailyLitres,
     totalLitres,
     grossPay,

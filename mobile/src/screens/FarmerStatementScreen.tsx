@@ -30,8 +30,9 @@ export default function FarmerStatementScreen({ farmerCode, month, year, onClose
 
   async function handlePrint() {
     if (!data) return;
-    const maxDay = isMidMonth ? 15 : data.daysInMonth;
-    const days = Array.from({ length: maxDay }, (_, i) => i + 1);
+    const startDay = isMidMonth ? 1 : (data.paidOn15th ? 16 : 1);
+    const endDay   = isMidMonth ? 15 : data.daysInMonth;
+    const days = Array.from({ length: endDay - startDay + 1 }, (_, i) => startDay + i);
     const rows = days.map(d => {
       const l = data.dailyLitres[d] || 0;
       return `<tr><td>${d}</td><td>${l > 0 ? l.toFixed(1) : '–'}</td></tr>`;
@@ -198,7 +199,10 @@ export default function FarmerStatementScreen({ farmerCode, month, year, onClose
           {/* Daily litres grid — 7 per row, only days in period */}
           <Text style={s.sectionTitle}>DAILY DELIVERIES</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3, marginBottom: 16 }}>
-            {Array.from({ length: isMidMonth ? 15 : data.daysInMonth }, (_, i) => i + 1).map(d => {
+            {Array.from(
+              { length: isMidMonth ? 15 : (data.paidOn15th ? data.daysInMonth - 15 : data.daysInMonth) },
+              (_, i) => isMidMonth ? i + 1 : (data.paidOn15th ? i + 16 : i + 1)
+            ).map(d => {
               const litres = data.dailyLitres[d] || 0;
               return (
                 <View key={d} style={[s.dayCell, litres > 0 && s.dayCellActive]}>
@@ -230,7 +234,7 @@ export default function FarmerStatementScreen({ farmerCode, month, year, onClose
         )}
 
         <TouchableOpacity style={s.printBtn} onPress={handlePrint}>
-          <Text style={s.printBtnText}>🖨️ Print — {isMidMonth ? 'Mid Month (1–15)' : 'Full Month'}</Text>
+          <Text style={s.printBtnText}>🖨️ Print — {data?.period || (isMidMonth ? 'Mid Month' : 'Full Month')}</Text>
         </TouchableOpacity>
       </View>
     </View>

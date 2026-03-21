@@ -160,56 +160,128 @@ router.get('/', async (req, res) => {
 router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
   const { month, year, isMidMonth, routeId } = req.body;
   const m = Number(month); const y = Number(year); const mid = !!isMidMonth;
-  const { start, end } = periodDates(m, y, mid);
 
-  // Build farmer filter
+  // ── Date ranges ──────────────────────────────────────────────────────────────
+  // Mid-month:  collections 1–15,  advances 5th & 10th only
+  // End-month for paidOn15th farmers:  collections 16–end,  advances 20th & 25th only
+  // End-month for full-month farmers:  collections 1–end,   advances 5,10,20,25
+  const midStart  = new Date(y, m - 1, 1);
+  const midEnd    = new Date(y, m - 1, 16);   // exclusive → days 1-15
+  const fullStart = new Date(y, m - 1, 1);
+  const fullEnd   = new Date(y, m, 1);         // exclusive → full month
+  const endStart  = new Date(y, m - 1, 16);   // 16th onwards for mid-month farmers
+  const endEnd    = new Date(y, m, 1);
+
+  // ── Farmer filter ────────────────────────────────────────────────────────────
   const whereRoute: any = { isActive: true };
   if (routeId) whereRoute.routeId = Number(routeId);
-  if (mid) whereRoute.paidOn15th = true;
+  if (mid) whereRoute.paidOn15th = true;         // mid-month run = paidOn15th farmers only
 
-  // Fetch farmers first to get their IDs — groupBy can't filter by relations
   const farmers = await prisma.farmer.findMany({
     where: whereRoute,
-    select: { id: true, pricePerLitre: true },
+    select: { id: true, pricePerLitre: true, paidOn15th: true },
   });
   const farmerIds = farmers.map(f => f.id);
   if (farmerIds.length === 0) return res.json({ created: 0, message: 'No farmers found' });
 
-  // Now groupBy filtering only by farmerIds (no relation joins)
-  const [collections, advances, deductions] = await Promise.all([
-    prisma.milkCollection.groupBy({
-      by: ['farmerId'],
-      where: { farmerId: { in: farmerIds }, collectedAt: { gte: start, lt: end } },
-      _sum: { litres: true },
-    }),
-    prisma.farmerAdvance.groupBy({
-      by: ['farmerId'],
-      where: { farmerId: { in: farmerIds }, advanceDate: { gte: start, lt: end } },
-      _sum: { amount: true },
-    }),
-    prisma.farmerDeduction.groupBy({
-      by: ['farmerId'],
-      where: { farmerId: { in: farmerIds }, periodMonth: m, periodYear: y },
-      _sum: { amount: true },
-    }),
+  // For end-month run: separate the two groups
+  // Group A: paidOn15th farmers → only 16-end collections + 20th/25th advances
+  // Group B: full-month farmers → full 1-end collections + all advances
+  // If mid is true: only Group A farmers, 1-15 window
+  const groupA_ids = farmers.filter(f => f.paidOn15th).map(f => f.id);
+  const groupB_ids = farmers.filter(f => !f.paidOn15th).map(f => f.id);
+
+  // ── Fetch collections ─────────────────────────────────────────────────────────
+  const collectionsPromises = [];
+  if (mid) {
+    // Mid-month: ALL selected farmers, days 1-15
+    collectionsPromises.push(
+      prisma.milkCollection.groupBy({ by: ['farmerId'], where: { farmerId: { in: farmerIds }, collectedAt: { gte: midStart, lt: midEnd } }, _sum: { litres: true } })
+    );
+  } else {
+    // End-month: Group A = days 16-end, Group B = days 1-end
+    collectionsPromises.push(
+      groupA_ids.length > 0
+        ? prisma.milkCollection.groupBy({ by: ['farmerId'], where: { farmerId: { in: groupA_ids }, collectedAt: { gte: endStart, lt: endEnd } }, _sum: { litres: true } })
+        : Promise.resolve([]),
+      groupB_ids.length > 0
+        ? prisma.milkCollection.groupBy({ by: ['farmerId'], where: { farmerId: { in: groupB_ids }, collectedAt: { gte: fullStart, lt: fullEnd } }, _sum: { litres: true } })
+        : Promise.resolve([])
+    );
+  }
+
+  // ── Fetch advances ────────────────────────────────────────────────────────────
+  const advancesPromises = [];
+  if (mid) {
+    // Mid-month advances: 5th and 10th only
+    advancesPromises.push(
+      prisma.farmerAdvance.groupBy({ by: ['farmerId'], where: { farmerId: { in: farmerIds }, advanceDate: { gte: midStart, lt: midEnd } }, _sum: { amount: true } })
+    );
+  } else {
+    // End-month Group A: 20th and 25th only
+    // End-month Group B: full month advances
+    advancesPromises.push(
+      groupA_ids.length > 0
+        ? prisma.farmerAdvance.groupBy({ by: ['farmerId'], where: { farmerId: { in: groupA_ids }, advanceDate: { gte: endStart, lt: endEnd } }, _sum: { amount: true } })
+        : Promise.resolve([]),
+      groupB_ids.length > 0
+        ? prisma.farmerAdvance.groupBy({ by: ['farmerId'], where: { farmerId: { in: groupB_ids }, advanceDate: { gte: fullStart, lt: fullEnd } }, _sum: { amount: true } })
+        : Promise.resolve([])
+    );
+  }
+
+  // ── Fetch b/f negatives for end-month ─────────────────────────────────────────
+  // Any farmer who had a negative mid-month payment carries it forward
+  let bfMap = new Map<number, number>();
+  if (!mid) {
+    const midNegatives = await prisma.farmerPayment.findMany({
+      where: { farmerId: { in: farmerIds }, periodMonth: m, periodYear: y, isMidMonth: true, netPay: { lt: 0 } },
+      select: { farmerId: true, netPay: true },
+    });
+    for (const p of midNegatives) {
+      bfMap.set(p.farmerId, Math.abs(Number(p.netPay)));
+    }
+  }
+
+  // ── Fetch other deductions ─────────────────────────────────────────────────────
+  const deductions = await prisma.farmerDeduction.groupBy({
+    by: ['farmerId'],
+    where: { farmerId: { in: farmerIds }, periodMonth: m, periodYear: y },
+    _sum: { amount: true },
+  });
+
+  // ── Resolve all queries ────────────────────────────────────────────────────────
+  const [collResults, advResults] = await Promise.all([
+    Promise.all(collectionsPromises),
+    Promise.all(advancesPromises),
   ]);
 
-  // Build lookup maps
-  const collMap  = new Map(collections.map(c => [c.farmerId, Number(c._sum.litres  || 0)]));
-  const advMap   = new Map(advances.map(a   => [a.farmerId, Number(a._sum.amount   || 0)]));
-  const dedMap   = new Map(deductions.map(d => [d.farmerId, Number(d._sum.amount   || 0)]));
-  const priceMap = new Map(farmers.map(f    => [f.id,       Number(f.pricePerLitre)]));
+  // Merge collection results into single map
+  const collMap = new Map<number, number>();
+  for (const group of collResults) {
+    for (const c of group) collMap.set(c.farmerId, (collMap.get(c.farmerId) || 0) + Number(c._sum.litres || 0));
+  }
+  const advMap = new Map<number, number>();
+  for (const group of advResults) {
+    for (const a of group) advMap.set(a.farmerId, (advMap.get(a.farmerId) || 0) + Number(a._sum.amount || 0));
+  }
+  const dedMap  = new Map(deductions.map(d => [d.farmerId, Number(d._sum.amount || 0)]));
+  const priceMap = new Map(farmers.map(f => [f.id, Number(f.pricePerLitre)]));
 
-  // Compute payments for farmers who have collections this period
+  // ── Compute payment records ───────────────────────────────────────────────────
   const records: any[] = [];
   for (const f of farmers) {
     const litres = collMap.get(f.id) || 0;
     if (litres === 0) continue;
-    const price           = priceMap.get(f.id) || 46;
-    const grossPay        = Number(litres) * Number(price);
-    const totalAdvances   = advMap.get(f.id)  || 0;
-    const totalDeductions = dedMap.get(f.id)  || 0;
-    const netPay          = Number(grossPay) - Number(totalAdvances) - Number(totalDeductions);
+
+    const price         = priceMap.get(f.id) || 46;
+    const grossPay      = Number(litres) * Number(price);
+    const totalAdvances = advMap.get(f.id) || 0;
+    const deductionAmt  = dedMap.get(f.id) || 0;
+    const bfCarried     = bfMap.get(f.id) || 0;   // negative from mid-month
+    const totalDeductions = Number(totalAdvances) + Number(deductionAmt) + Number(bfCarried);
+    const netPay        = Number(grossPay) - totalDeductions;
+
     records.push({
       farmerId: f.id, periodMonth: m, periodYear: y, isMidMonth: mid,
       grossPay, totalAdvances, totalDeductions, netPay,
@@ -218,8 +290,7 @@ router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
 
   if (records.length === 0) return res.json({ created: 0, message: 'No collections found for this period' });
 
-  // Upsert in batches of 50
-  // Note: totalDeductions may not exist in older DB — we include netPay which absorbs deductions
+  // ── Upsert in batches ─────────────────────────────────────────────────────────
   let created = 0;
   const BATCH = 50;
   for (let i = 0; i < records.length; i += BATCH) {
@@ -232,10 +303,8 @@ router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
         },
       },
       update: {
-        grossPay: r.grossPay,
-        totalAdvances: r.totalAdvances,
-        totalDeductions: r.totalDeductions,
-        netPay: r.netPay,
+        grossPay: r.grossPay, totalAdvances: r.totalAdvances,
+        totalDeductions: r.totalDeductions, netPay: r.netPay,
         status: 'PENDING',
       },
       create: r,
@@ -245,7 +314,6 @@ router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
 
   res.json({ created, message: `Generated ${created} payment records` });
 });
-
 
 // POST /api/payments/approve — approve payments per route
 router.post('/approve', authorize('ADMIN', 'OFFICE'), async (req, res) => {

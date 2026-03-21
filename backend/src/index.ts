@@ -81,15 +81,17 @@ app.use(errorHandler);
 // ─── Auto-migrate missing columns on startup ──────────────────────────────────
 async function runMigrations() {
   try {
-    // Add totalDeductions column if missing
-    await prisma.$executeRawUnsafe(`
+    const { Client } = await import('pg');
+    const client = new Client({ connectionString: process.env.DATABASE_URL });
+    await client.connect();
+    await client.query(`
       ALTER TABLE "FarmerPayment"
       ADD COLUMN IF NOT EXISTS "totalDeductions" DECIMAL NOT NULL DEFAULT 0;
     `);
+    await client.end();
     logger.info('✓ DB migrations complete');
   } catch (e: any) {
-    // Silently continue — column may already exist or DB may not support this syntax
-    logger.warn('Migration note:', e?.message?.slice(0, 80));
+    logger.warn('Migration note: ' + (e?.message?.slice(0, 100) || 'skipped'));
   }
 }
 

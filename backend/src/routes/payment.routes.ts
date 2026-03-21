@@ -224,50 +224,22 @@ router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
   const BATCH = 50;
   for (let i = 0; i < records.length; i += BATCH) {
     const batch = records.slice(i, i + BATCH);
-    await Promise.all(batch.map(async r => {
-      try {
-        await prisma.farmerPayment.upsert({
-          where: {
-            farmerId_periodMonth_periodYear_isMidMonth: {
-              farmerId: r.farmerId, periodMonth: r.periodMonth,
-              periodYear: r.periodYear, isMidMonth: r.isMidMonth,
-            },
-          },
-          update: {
-            grossPay: r.grossPay,
-            totalAdvances: r.totalAdvances,
-            totalDeductions: r.totalDeductions,
-            netPay: r.netPay,
-            status: 'PENDING',
-          },
-          create: r,
-        });
-      } catch (e: any) {
-        // Fallback: if totalDeductions column missing, try without it
-        if (e?.message?.includes('totalDeductions') || e?.code === 'P2022') {
-          await prisma.farmerPayment.upsert({
-            where: {
-              farmerId_periodMonth_periodYear_isMidMonth: {
-                farmerId: r.farmerId, periodMonth: r.periodMonth,
-                periodYear: r.periodYear, isMidMonth: r.isMidMonth,
-              },
-            },
-            update: {
-              grossPay: r.grossPay,
-              totalAdvances: r.totalAdvances,
-              netPay: r.netPay,
-              status: 'PENDING',
-            },
-            create: {
-              farmerId: r.farmerId, periodMonth: r.periodMonth,
-              periodYear: r.periodYear, isMidMonth: r.isMidMonth,
-              grossPay: r.grossPay, totalAdvances: r.totalAdvances,
-              netPay: r.netPay,
-            },
-          });
-        } else throw e;
-      }
-    }));
+    await Promise.all(batch.map(r => prisma.farmerPayment.upsert({
+      where: {
+        farmerId_periodMonth_periodYear_isMidMonth: {
+          farmerId: r.farmerId, periodMonth: r.periodMonth,
+          periodYear: r.periodYear, isMidMonth: r.isMidMonth,
+        },
+      },
+      update: {
+        grossPay: r.grossPay,
+        totalAdvances: r.totalAdvances,
+        totalDeductions: r.totalDeductions,
+        netPay: r.netPay,
+        status: 'PENDING',
+      },
+      create: r,
+    })));
     created += batch.length;
   }
 

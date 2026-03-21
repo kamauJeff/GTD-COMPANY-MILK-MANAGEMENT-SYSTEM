@@ -96,19 +96,18 @@ export default function CollectionScreen({ employee, onBack, routeId, routeName 
     try {
       const collectedAtStr = new Date(collectionDate + 'T' + new Date().toTimeString().split(' ')[0]).toISOString();
 
-      // Check if this farmer already has a record for this date — if so, update it
+      // Check if this farmer already has a record for this date — replace it
       const all = await getAllCollections();
       const datePrefix = collectionDate;
       const existing = all.find(r =>
         (r.farmer_id === selectedFarmer.id || r.farmerId === selectedFarmer.id) &&
-        (r.collected_at || r.collectedAt || '').startsWith(datePrefix) &&
-        r.synced === 0
+        (r.collected_at || r.collectedAt || '').startsWith(datePrefix)
       );
 
       if (existing) {
-        // Replace the existing unsynced record
+        // Replace existing record (synced or unsynced)
         const updated = all.map(r => r.id === existing.id
-          ? { ...r, litres: l, collected_at: collectedAtStr, collectedAt: collectedAtStr }
+          ? { ...r, litres: l, collected_at: collectedAtStr, collectedAt: collectedAtStr, synced: 0 }
           : r
         );
         const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
@@ -133,16 +132,14 @@ export default function CollectionScreen({ employee, onBack, routeId, routeName 
         time: new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }),
       };
 
+      // Replace in session display — remove any previous entry for this farmer today
       setSessionSaved(prev => {
-        const without = prev.filter(r => r.farmerCode !== selectedFarmer.code || !collectionDate.endsWith(r.time?.split(':')[0] || ''));
-        return [newRecord, ...without];
+        const filtered = prev.filter(r => r.farmerCode !== selectedFarmer.code);
+        return [newRecord, ...filtered];
       });
 
-      // Show receipt
-      const cumulative = sessionSaved
-        .filter(r => r.farmerCode === selectedFarmer.code)
-        .reduce((s, r) => s + r.litres, 0) + l;
-      setShowReceipt({ ...newRecord, cumulative });
+      // Cumulative = just this record (since we replaced)
+      setShowReceipt({ ...newRecord, cumulative: l });
 
       setSelectedFarmer(null);
       setSearch('');

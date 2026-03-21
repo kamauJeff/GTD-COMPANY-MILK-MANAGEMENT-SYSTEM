@@ -37,12 +37,36 @@ export async function getAllCollections(): Promise<any[]> {
 export async function getAllCollectionsToday(): Promise<any[]> {
   const all = await getAllCollections();
   const todayStr = new Date().toISOString().split('T')[0];
-  return all.filter(r => (r.collected_at || r.collectedAt || '').startsWith(todayStr));
+  const todayRecords = all.filter(r => (r.collected_at || r.collectedAt || '').startsWith(todayStr));
+
+  // Deduplicate: if same farmer has multiple records for today, keep only the latest
+  const byFarmer = new Map<number, any>();
+  for (const r of todayRecords) {
+    const fid = r.farmer_id || r.farmerId;
+    const existing = byFarmer.get(fid);
+    if (!existing || (r.id > existing.id)) {
+      byFarmer.set(fid, r);
+    }
+  }
+  return Array.from(byFarmer.values()).sort((a, b) => b.id - a.id);
 }
 
 export async function getPendingCollections(): Promise<any[]> {
   const all = await getAllCollections();
-  return all.filter(r => r.synced === 0);
+  const pending = all.filter(r => r.synced === 0);
+
+  // Deduplicate: if same farmer has multiple pending records for same day, keep only latest
+  const byFarmerDay = new Map<string, any>();
+  for (const r of pending) {
+    const fid = r.farmer_id || r.farmerId;
+    const day = (r.collected_at || r.collectedAt || '').split('T')[0];
+    const key = `${fid}_${day}`;
+    const existing = byFarmerDay.get(key);
+    if (!existing || r.id > existing.id) {
+      byFarmerDay.set(key, r);
+    }
+  }
+  return Array.from(byFarmerDay.values());
 }
 
 export async function markSynced(ids: number[]) {

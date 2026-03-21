@@ -19,8 +19,9 @@ export default router;
 
 // Farmer monthly statement
 router.get('/statement', async (req, res) => {
-  const { farmerCode, month, year } = req.query;
+  const { farmerCode, month, year, isMidMonth } = req.query;
   const m = Number(month); const y = Number(year);
+  const mid = isMidMonth === 'true';
 
   const farmer = await prisma.farmer.findFirst({
     where: {
@@ -33,8 +34,15 @@ router.get('/statement', async (req, res) => {
   });
   if (!farmer) return res.status(404).json({ error: 'Farmer not found' });
 
-  const start = new Date(y, m - 1, 1);
-  const end   = new Date(y, m, 1);
+  // Date range: mid-month = 1-15, end-month = 1-last day
+  const start   = new Date(y, m - 1, 1);
+  const midEnd  = new Date(y, m - 1, 16); // exclusive, so day 15 included
+  const fullEnd = new Date(y, m, 1);
+  const end = mid ? midEnd : fullEnd;
+
+  // For advances: mid-month only includes 5th and 10th; end-month includes all
+  const advStart = start;
+  const advEnd   = mid ? midEnd : fullEnd;
 
   const [collections, advances, deductions] = await Promise.all([
     prisma.milkCollection.findMany({
@@ -42,8 +50,8 @@ router.get('/statement', async (req, res) => {
       orderBy: { collectedAt: 'asc' },
     }),
     prisma.farmerAdvance.findMany({
-      where: { farmerId: farmer.id, advanceDate: { gte: start, lt: end } },
-      orderBy: { advanceDate: 'asc' }, // chronological
+      where: { farmerId: farmer.id, advanceDate: { gte: advStart, lt: advEnd } },
+      orderBy: { advanceDate: 'asc' },
     }),
     prisma.farmerDeduction.findMany({
       where: { farmerId: farmer.id, periodMonth: m, periodYear: y },
@@ -115,10 +123,12 @@ router.get('/statement', async (req, res) => {
   res.json({
     farmer: { ...farmer, route: farmer.route },
     daysInMonth: new Date(y, m, 0).getDate(),
+    isMidMonth: mid,
+    period: mid ? `Mid Month (1–15 ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1]} ${y})` : `End Month (${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1]} ${y})`,
     dailyLitres,
     totalLitres,
     grossPay,
-    advances: advancesOrdered,    // ordered array [{day, label, amount}]
+    advances: advancesOrdered,
     totalAdvances,
     bfBalance,
     otherDeductions,

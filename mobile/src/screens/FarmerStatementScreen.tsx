@@ -12,17 +12,17 @@ interface Props {
 }
 
 export default function FarmerStatementScreen({ farmerCode, month, year, onClose }: Props) {
-  const [loading, setLoading] = useState(true);
-  const [data, setData]       = useState<any>(null);
+  const [loading, setLoading]     = useState(true);
+  const [data, setData]           = useState<any>(null);
+  const [isMidMonth, setMidMonth] = useState(false);
   const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, [isMidMonth]);
 
   async function load() {
+    setLoading(true);
     try {
-      const res = await farmersApi.statement({ farmerCode, month, year });
+      const res = await farmersApi.statement({ farmerCode, month, year, isMidMonth });
       setData(res.data);
     } catch { Alert.alert('Error', 'Could not load statement'); }
     setLoading(false);
@@ -30,7 +30,8 @@ export default function FarmerStatementScreen({ farmerCode, month, year, onClose
 
   async function handlePrint() {
     if (!data) return;
-    const days = Array.from({ length: data.daysInMonth }, (_, i) => i + 1);
+    const maxDay = isMidMonth ? 15 : data.daysInMonth;
+    const days = Array.from({ length: maxDay }, (_, i) => i + 1);
     const rows = days.map(d => {
       const l = data.dailyLitres[d] || 0;
       return `<tr><td>${d}</td><td>${l > 0 ? l.toFixed(1) : '–'}</td></tr>`;
@@ -55,7 +56,8 @@ export default function FarmerStatementScreen({ farmerCode, month, year, onClose
       <div class="center bold header">GUTORIA DAIRIES</div>
       <div class="center section">Enquiries: 0793392375</div>
       <div class="divider"></div>
-      <div class="center bold" style="font-size:13px">FARMER MONTHLY STATEMENT</div>
+      <div class="center bold" style="font-size:13px">FARMER ${isMidMonth ? 'MID-MONTH' : 'END OF MONTH'} STATEMENT</div>
+      <div class="center" style="font-size:11px;color:#555">${data.period}</div>
       <div class="center section">${MONTHS[month-1]} ${year}</div>
       <div class="divider"></div>
       <table>
@@ -118,8 +120,8 @@ export default function FarmerStatementScreen({ farmerCode, month, year, onClose
     <View style={s.overlay}>
       <View style={s.modal}>
         <View style={s.header}>
-          <View>
-            <Text style={s.title}>Monthly Statement</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={s.title}>Farmer Statement</Text>
             <Text style={s.sub}>{MONTHS[month-1]} {year} · {data.farmer.code}</Text>
           </View>
           <TouchableOpacity onPress={onClose} style={s.closeBtn}>
@@ -127,17 +129,39 @@ export default function FarmerStatementScreen({ farmerCode, month, year, onClose
           </TouchableOpacity>
         </View>
 
+        {/* Mid / End Month Toggle */}
+        <View style={tog.wrap}>
+          <TouchableOpacity
+            style={[tog.btn, !isMidMonth && tog.btnActive]}
+            onPress={() => setMidMonth(false)}>
+            <Text style={[tog.label, !isMidMonth && tog.labelActive]}>📅 Full Month</Text>
+            <Text style={[tog.sub, !isMidMonth && tog.subActive]}>1st – {data.daysInMonth}th</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[tog.btn, isMidMonth && tog.btnMid]}
+            onPress={() => setMidMonth(true)}>
+            <Text style={[tog.label, isMidMonth && tog.labelActive]}>📅 Mid Month</Text>
+            <Text style={[tog.sub, isMidMonth && tog.subActive]}>1st – 15th</Text>
+          </TouchableOpacity>
+        </View>
+
+        {loading ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 }}>
+            <ActivityIndicator color={GREEN} size="large" />
+            <Text style={{ color: '#4a7090', marginTop: 12, fontSize: 13 }}>Loading {isMidMonth ? 'mid' : 'full'} month...</Text>
+          </View>
+        ) : (
         <ScrollView style={s.scroll}>
           {/* Farmer info */}
           <View style={s.section}>
             <Text style={s.farmerName}>{data.farmer.name}</Text>
-            <Text style={s.farmerMeta}>{data.farmer.route?.name} · KES {data.farmer.pricePerLitre}/L</Text>
+            <Text style={s.farmerMeta}>{data.farmer.route?.name} · KES {data.farmer.pricePerLitre}/L · {data.period}</Text>
           </View>
 
-          {/* Daily litres grid — 7 per row calendar style */}
+          {/* Daily litres grid — 7 per row, only days in period */}
           <Text style={s.sectionTitle}>DAILY DELIVERIES</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3, marginBottom: 16 }}>
-            {Array.from({ length: data.daysInMonth }, (_, i) => i + 1).map(d => {
+            {Array.from({ length: isMidMonth ? 15 : data.daysInMonth }, (_, i) => i + 1).map(d => {
               const litres = data.dailyLitres[d] || 0;
               return (
                 <View key={d} style={[s.dayCell, litres > 0 && s.dayCellActive]}>
@@ -166,9 +190,10 @@ export default function FarmerStatementScreen({ farmerCode, month, year, onClose
 
           <View style={{ height: 20 }} />
         </ScrollView>
+        )}
 
         <TouchableOpacity style={s.printBtn} onPress={handlePrint}>
-          <Text style={s.printBtnText}>🖨️ Print Statement</Text>
+          <Text style={s.printBtnText}>🖨️ Print — {isMidMonth ? 'Mid Month (1–15)' : 'Full Month'}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -219,4 +244,14 @@ const rs = StyleSheet.create({
   value:     { fontSize: 12, color: '#fff', fontWeight: '600', textAlign: 'right' },
   neg:       { color: '#f87171' },
   pos:       { color: GREEN, fontSize: 15, fontWeight: '900' },
+});
+const tog = StyleSheet.create({
+  wrap:        { flexDirection: 'row', marginHorizontal: 12, marginTop: 10, marginBottom: 4, gap: 8 },
+  btn:         { flex: 1, paddingVertical: 10, borderRadius: 12, backgroundColor: '#0d1f33', borderWidth: 1.5, borderColor: '#1e3d5c', alignItems: 'center' },
+  btnActive:   { backgroundColor: '#0a1e10', borderColor: GREEN },
+  btnMid:      { backgroundColor: '#1a0d2e', borderColor: '#a78bfa' },
+  label:       { color: '#4a7090', fontWeight: '700', fontSize: 12 },
+  labelActive: { color: GREEN },
+  sub:         { color: '#2a4d6a', fontSize: 10, marginTop: 2 },
+  subActive:   { color: '#a3e4c0' },
 });

@@ -138,8 +138,44 @@ export default function CollectionScreen({ employee, onBack, routeId, routeName 
         return [newRecord, ...filtered];
       });
 
-      // Cumulative = just this record (since we replaced)
-      setShowReceipt({ ...newRecord, cumulative: l });
+      // ── Compute cumulative for this farmer within their payment period ──────
+      // paidOn15th = true : period resets on 16th (mid = days 1-15, end = days 16-end)
+      // paidOn15th = false: full month, never resets (days 1-end)
+      const freshAll = await getAllCollections();
+      const now2 = new Date();
+      const currentDay = now2.getDate();
+      const currentMonth = now2.getMonth();
+      const currentYear = now2.getFullYear();
+      const paidMid = selectedFarmer.paidOn15th === true;
+
+      // Determine period start day
+      let periodStartDay = 1;
+      if (paidMid && currentDay > 15) {
+        periodStartDay = 16; // end-month period for mid-month farmers
+      }
+      // For full-month farmers (paidOn15th = false), periodStartDay stays 1
+
+      const periodStart = new Date(currentYear, currentMonth, periodStartDay);
+      periodStart.setHours(0, 0, 0, 0);
+      const periodEnd = new Date(currentYear, currentMonth + 1, 1); // start of next month
+
+      const cumulative = freshAll
+        .filter(r => {
+          const fid = r.farmer_id || r.farmerId;
+          if (fid !== selectedFarmer.id) return false;
+          const dt = new Date(r.collected_at || r.collectedAt || 0);
+          return dt >= periodStart && dt < periodEnd;
+        })
+        .reduce((s, r) => s + Number(r.litres), 0);
+
+      // Period label for receipt
+      const periodLabel = paidMid
+        ? currentDay <= 15
+          ? `1–15 ${now2.toLocaleString('en-KE', { month: 'short' })}`
+          : `16–${new Date(currentYear, currentMonth + 1, 0).getDate()} ${now2.toLocaleString('en-KE', { month: 'short' })}`
+        : `${now2.toLocaleString('en-KE', { month: 'long' })} total`;
+
+      setShowReceipt({ ...newRecord, cumulative, periodLabel });
 
       setSelectedFarmer(null);
       setSearch('');
@@ -177,6 +213,7 @@ export default function CollectionScreen({ employee, onBack, routeId, routeName 
           graderName={employee.name}
           routeName={routeName || 'Route'}
           cumulative={showReceipt.cumulative}
+          periodLabel={showReceipt.periodLabel}
           onClose={() => setShowReceipt(null)}
         />
       )}

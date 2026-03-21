@@ -16,7 +16,8 @@ interface Props {
   collection: Collection;
   graderName: string;
   routeName: string;
-  cumulative: number;   // total litres for this farmer today
+  cumulative: number;
+  periodLabel?: string;  // e.g. "1–15 Mar" or "16–31 Mar" or "March total"
   onClose: () => void;
 }
 
@@ -27,7 +28,7 @@ function generateReceiptNo() {
   return `GTD${now.getFullYear()}${padZero(now.getMonth()+1)}${padZero(now.getDate())}${padZero(now.getHours())}${padZero(now.getMinutes())}${padZero(now.getSeconds())}`;
 }
 
-export default function ReceiptScreen({ collection, graderName, routeName, cumulative, onClose }: Props) {
+export default function ReceiptScreen({ collection, graderName, routeName, cumulative, periodLabel, onClose }: Props) {
   const receiptNo = collection.receiptNo || generateReceiptNo();
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-KE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -102,7 +103,7 @@ export default function ReceiptScreen({ collection, graderName, routeName, cumul
       <div class="litres">${collection.litres.toFixed(1)} L</div>
 
       <div class="dash"></div>
-      <div class="row s"><span>Today's Total:</span><span class="b">${cumulative.toFixed(1)} L</span></div>
+      <div class="row s"><span>${periodLabel ? periodLabel + ':' : "Today's Total:"}</span><span class="b">${cumulative.toFixed(1)} L</span></div>
       <div class="line"></div>
 
       <div class="c xs" style="margin-top:4px">*** KEEP THIS RECEIPT ***</div>
@@ -139,7 +140,7 @@ export default function ReceiptScreen({ collection, graderName, routeName, cumul
         `Name: ${collection.farmerName}`,
         '------------------------------',
         `LITRES WEIGHED: ${collection.litres.toFixed(1)} L`,
-        `Cumulative Today: ${cumulative.toFixed(1)} L`,
+        `${periodLabel ? periodLabel : 'Cumulative'}: ${cumulative.toFixed(1)} L`,
         '------------------------------',
         `Served by: ${graderName}`,
         '------------------------------',
@@ -178,7 +179,7 @@ export default function ReceiptScreen({ collection, graderName, routeName, cumul
             <Text style={s.litresBig}>{collection.litres.toFixed(1)} L</Text>
             <View style={s.divider} />
 
-            <View style={s.row}><Text style={s.label}>Cumulative Today:</Text><Text style={[s.value, s.bold]}>{cumulative.toFixed(1)} L</Text></View>
+            <View style={s.row}><Text style={s.label}>{periodLabel ? `${periodLabel}:` : 'Cumulative:'}</Text><Text style={[s.value, s.bold]}>{cumulative.toFixed(1)} L</Text></View>
             <View style={s.divider} />
 
             <View style={s.row}><Text style={s.label}>Served by:</Text><Text style={[s.value, s.bold]}>{graderName}</Text></View>

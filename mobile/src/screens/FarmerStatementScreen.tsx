@@ -151,14 +151,17 @@ export default function FarmerStatementScreen({ farmerCode, month, year, onClose
           {/* Totals */}
           <View style={s.totalsCard}>
             <Row label="Total Litres" value={`${data.totalLitres.toFixed(1)} L`} highlight />
-            <Row label={`Gross Pay (@ KES ${data.farmer.pricePerLitre}/L)`} value={`KES ${data.grossPay.toLocaleString()}`} />
-            {Object.entries(data.advances || {}).map(([d, amt]: any) => (
-              <Row key={d} label={`Advance (${d})`} value={`- KES ${Number(amt).toLocaleString()}`} negative />
-            ))}
-            {data.bfBalance > 0 && <Row label="Balance b/f" value={`- KES ${data.bfBalance.toLocaleString()}`} negative />}
+            <Row label={`Gross Pay (@ KES ${data.farmer.pricePerLitre}/L)`} value={`KES ${Number(data.grossPay).toLocaleString()}`} />
             <View style={s.divider} />
-            <Row label="Total Deductions" value={`KES ${data.totalAdvances.toLocaleString()}`} negative />
-            <Row label="NET PAY" value={`KES ${data.netPay.toLocaleString()}`} highlight netPay={data.netPay} />
+            <Row label="DEDUCTIONS" value="" />
+            {data.bfBalance > 0 && <Row label="  Balance b/f" value={`- KES ${Number(data.bfBalance).toLocaleString()}`} negative />}
+            {Object.entries(data.advances || {}).map(([d, amt]: any) => (
+              <Row key={d} label={`  Advance (${d})`} value={`- KES ${Number(amt).toLocaleString()}`} negative />
+            ))}
+            <View style={s.divider} />
+            <Row label="Total Deductions" value={`- KES ${(Number(data.totalAdvances) + Number(data.bfBalance || 0)).toLocaleString()}`} negative />
+            <View style={s.divider} />
+            <Row label="NET PAY" value={`KES ${Number(data.netPay).toLocaleString()}`} highlight netPay={data.netPay} />
           </View>
 
           <View style={{ height: 20 }} />

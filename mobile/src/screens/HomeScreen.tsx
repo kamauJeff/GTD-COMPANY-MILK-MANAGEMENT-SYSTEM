@@ -145,6 +145,17 @@ export default function HomeScreen({ employee, onNavigate, onLogout }: Props) {
           <Text style={s.actionChev}>›</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity style={s.actionCard} onPress={() => onNavigate('statement')} activeOpacity={0.85}>
+          <View style={[s.actionIcon, { backgroundColor: '#1a0d2e' }]}>
+            <Text style={s.actionEmoji}>📄</Text>
+          </View>
+          <View style={s.actionBody}>
+            <Text style={s.actionTitle}>Farmer Statement</Text>
+            <Text style={s.actionSub}>Print monthly statement for a farmer</Text>
+          </View>
+          <Text style={s.actionChev}>›</Text>
+        </TouchableOpacity>
+
         {(employee.role === 'DRIVER' || employee.role === 'ADMIN') && (
           <TouchableOpacity style={s.actionCard} onPress={() => onNavigate('driver')} activeOpacity={0.85}>
             <View style={[s.actionIcon, { backgroundColor: '#1a1000' }]}>

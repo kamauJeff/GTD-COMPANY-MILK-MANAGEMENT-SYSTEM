@@ -67,7 +67,7 @@ export default function CollectionsPage() {
   const daysInMonth: number               = grid?.daysInMonth ?? new Date(year, month, 0).getDate();
   const grandTotal: number                = grid?.grandTotal ?? 0;
   const grandMoney: number                = grid?.grandMoney ?? 0;
-  const advanceDates: number[]            = grid?.advanceDates ?? [5,10,15,20,25];
+  const advanceDates: number[]            = grid?.advanceDates ?? [5,10,20,25];
   const days    = Array.from({ length: daysInMonth }, (_, i) => i + 1);
   const midDays = days.filter(d => d <= 15);
   const endDays = days.filter(d => d > 15);
@@ -191,8 +191,8 @@ export default function CollectionsPage() {
                   <th className="bg-green-800 px-2 py-1 border-r border-green-700 text-xs" rowSpan={2}>TL</th>
                   <th className="bg-green-900 px-2 py-1 border-r border-green-700 text-xs" rowSpan={2}>TM</th>
                   <th className="bg-orange-800 px-1 py-1 border-r border-orange-700 text-xs" rowSpan={2}>B/f</th>
-                  <th className="bg-orange-700 px-1 py-1 border-r border-orange-600 text-xs" colSpan={5}>ADVANCES</th>
-                  <th className="bg-orange-900 px-2 py-1 border-r text-xs" rowSpan={2}>Total<br/>Adv</th>
+                  <th className="bg-orange-700 px-1 py-1 border-r border-orange-600 text-xs" colSpan={4}>ADVANCES</th>
+                  <th className="bg-red-800 sticky right-0 px-2 py-1 border-r text-xs" rowSpan={2}>Total<br/>Deductions</th>
                   <th className="bg-teal-800 sticky right-0 px-2 py-1 text-xs" rowSpan={2}>Amt<br/>Payable</th>
                 </tr>
                 {/* Row 2: day numbers */}
@@ -242,20 +242,32 @@ export default function CollectionsPage() {
                 {/* Grand totals */}
                 <tr className="bg-gray-800 text-white font-bold sticky bottom-0 z-20">
                   <td className="sticky left-0 bg-gray-800 z-30 px-2 py-2.5 text-xs" colSpan={2}>GRAND TOTAL</td>
-                  {midDays.map(d => (
+                  {midDays.map((d: number) => (
                     <td key={d} className="px-0.5 py-2.5 text-center text-xs">
                       {getDayTotal(d) > 0 ? <span className="text-green-300">{getDayTotal(d).toFixed(0)}</span> : <span className="text-gray-600">–</span>}
                     </td>
                   ))}
                   <td className="px-1 py-2.5 text-center text-xs text-purple-300">{getMid15Total().toFixed(0)}</td>
-                  {endDays.map(d => (
+                  {endDays.map((d: number) => (
                     <td key={d} className="px-0.5 py-2.5 text-center text-xs border-r border-gray-700">
                       {getDayTotal(d) > 0 ? <span className="text-green-300">{getDayTotal(d).toFixed(0)}</span> : <span className="text-gray-600">–</span>}
                     </td>
                   ))}
                   <td className="px-1 py-2.5 text-center text-xs text-green-300">{getGrandTotal().toFixed(0)}</td>
-                  <td className="sticky right-0 bg-gray-800 px-2 py-2.5 text-right text-xs text-green-300">
-                    {getGrandMoney().toLocaleString()}
+                  <td className="px-1 py-2.5 text-center text-xs text-blue-300">{getGrandMoney().toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+                  <td className="px-1 py-2.5 text-center text-xs text-red-300">
+                    {filtered.reduce((s: number,f: any) => s + (f.bfBalance||0), 0) > 0 ? filtered.reduce((s: number,f: any) => s + (f.bfBalance||0), 0).toLocaleString(undefined,{maximumFractionDigits:0}) : '–'}
+                  </td>
+                  {([5,10,20,25] as number[]).map((d: number) => (
+                    <td key={d} className="px-0.5 py-2.5 text-center text-xs text-orange-300">
+                      {filtered.reduce((s: number,f: any) => s + (f.advances?.[d]||0), 0) > 0 ? filtered.reduce((s: number,f: any) => s + (f.advances?.[d]||0), 0).toLocaleString(undefined,{maximumFractionDigits:0}) : '–'}
+                    </td>
+                  ))}
+                  <td className="px-1 py-2.5 text-center text-xs text-red-300">
+                    {filtered.reduce((s: number,f: any) => s + (f.bfBalance||0) + (f.totalAdvances||0), 0).toLocaleString(undefined,{maximumFractionDigits:0})}
+                  </td>
+                  <td className="sticky right-0 bg-gray-800 px-2 py-2.5 text-right text-xs text-teal-300">
+                    {(getGrandMoney() - filtered.reduce((s: number,f: any) => s + (f.bfBalance||0) + (f.totalAdvances||0), 0)).toLocaleString(undefined,{maximumFractionDigits:0})}
                   </td>
                 </tr>
               </tbody>
@@ -450,10 +462,12 @@ export default function CollectionsPage() {
 }
 
 function FarmerRow({ f, idx, days, midDays, endDays, getTotal15, getTotalLitres, getTotalMoney }: any) {
-  const total15     = getTotal15(f);
-  const totalLitres = getTotalLitres(f);
-  const totalMoney  = getTotalMoney(f);
-  const advDates    = [5, 10, 20, 25];
+  const total15      = getTotal15(f);
+  const totalLitres  = getTotalLitres(f);
+  const totalMoney   = getTotalMoney(f);
+  const advDates     = [5, 10, 20, 25];
+  const totalDeductions = (f.bfBalance || 0) + (f.totalAdvances || 0); // b/f + all advances
+  const amtPayable   = totalMoney - totalDeductions;
   const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-gray-50';
   return (
     <tr className={`border-b border-gray-100 ${rowBg} hover:bg-green-50`}>
@@ -480,28 +494,30 @@ function FarmerRow({ f, idx, days, midDays, endDays, getTotal15, getTotalLitres,
       <td className="px-1 py-2 text-center font-bold text-green-700 bg-green-50 border-r border-green-100 text-xs">{totalLitres > 0 ? totalLitres.toFixed(1) : '–'}</td>
       <td className="px-1 py-2 text-center font-bold text-blue-700 bg-blue-50 border-r border-blue-100 text-xs">{totalMoney > 0 ? totalMoney.toLocaleString(undefined,{maximumFractionDigits:0}) : '–'}</td>
       {/* B/f */}
-      <td className={`px-1 py-2 text-center text-xs border-r ${f.bfBalance > 0 ? 'text-red-600 font-bold bg-red-50' : 'text-gray-300'}`}>
-        {f.bfBalance > 0 ? f.bfBalance.toLocaleString(undefined,{maximumFractionDigits:0}) : '–'}
+      <td className={`px-1 py-2 text-center text-xs border-r ${(f.bfBalance || 0) > 0 ? 'text-red-600 font-bold bg-red-50' : 'text-gray-300'}`}>
+        {(f.bfBalance || 0) > 0 ? f.bfBalance.toLocaleString(undefined,{maximumFractionDigits:0}) : '–'}
       </td>
-      {/* Advance columns */}
+      {/* Advance columns - 4 only: 5,10,20,25 */}
       {advDates.map(d => (
         <td key={d} className="px-0.5 py-2 text-center text-xs border-r border-orange-100">
           {f.advances?.[d] > 0 ? <span className="text-orange-600 font-medium">{f.advances[d].toLocaleString(undefined,{maximumFractionDigits:0})}</span> : <span className="text-gray-200">–</span>}
         </td>
       ))}
-      {/* Total advances */}
-      <td className="px-1 py-2 text-center text-xs font-bold text-orange-600 border-r bg-orange-50">
-        {f.totalAdvances > 0 ? f.totalAdvances.toLocaleString(undefined,{maximumFractionDigits:0}) : '–'}
+      {/* Total Deductions = B/f + all advances */}
+      <td className="px-1 py-2 text-center text-xs font-bold text-red-700 border-r bg-red-50">
+        {totalDeductions > 0 ? totalDeductions.toLocaleString(undefined,{maximumFractionDigits:0}) : '–'}
       </td>
-      {/* Amt Payable */}
-      <td className={`sticky right-0 px-2 py-2 text-right font-bold text-xs border-l ${f.amtPayable < 0 ? 'bg-red-50 text-red-600' : 'bg-teal-50 text-teal-700'}`}>
-        {f.amtPayable !== undefined ? f.amtPayable.toLocaleString(undefined,{maximumFractionDigits:0}) : '–'}
+      {/* Amt Payable = TM - Total Deductions */}
+      <td className={`sticky right-0 px-2 py-2 text-right font-bold text-xs border-l ${amtPayable < 0 ? 'bg-red-50 text-red-600' : 'bg-teal-50 text-teal-700'}`}>
+        {totalMoney > 0 ? amtPayable.toLocaleString(undefined,{maximumFractionDigits:0}) : '–'}
       </td>
     </tr>
   );
 }
 
 function RouteSubtotal({ farmers, days, midDays, endDays, getDayTotal, getTotal15, getTotalLitres, getTotalMoney }: any) {
+  const totalDeductions = farmers.reduce((s: number, f: any) => s + (f.bfBalance || 0) + (f.totalAdvances || 0), 0);
+  const amtPayable      = getTotalMoney() - totalDeductions;
   return (
     <tr className="bg-green-50 border-y border-green-200 font-semibold">
       <td className="sticky left-0 bg-green-50 z-10 px-2 py-2 text-xs text-green-700" colSpan={2}>ROUTE TOTAL ({farmers.length})</td>
@@ -517,8 +533,28 @@ function RouteSubtotal({ farmers, days, midDays, endDays, getDayTotal, getTotal1
         </td>
       ))}
       <td className="px-1 py-2 text-center text-xs font-bold text-green-800 bg-green-100">{getTotalLitres().toFixed(0)}</td>
-      <td className="sticky right-0 bg-green-50 px-2 py-2 text-right text-xs font-bold text-blue-700">
-        {getTotalMoney().toLocaleString(undefined,{maximumFractionDigits:0})}
+      <td className="px-1 py-2 text-center text-xs font-bold text-blue-700 bg-blue-50 border-r">{getTotalMoney().toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+      {/* B/f total */}
+      <td className="px-1 py-2 text-center text-xs font-bold text-red-600 border-r">
+        {farmers.reduce((s: number, f: any) => s + (f.bfBalance || 0), 0) > 0
+          ? farmers.reduce((s: number, f: any) => s + (f.bfBalance || 0), 0).toLocaleString(undefined,{maximumFractionDigits:0})
+          : '–'}
+      </td>
+      {/* Advance date totals */}
+      {[5,10,20,25].map(d => (
+        <td key={d} className="px-0.5 py-2 text-center text-xs text-orange-600 border-r border-orange-100">
+          {farmers.reduce((s: number, f: any) => s + (f.advances?.[d] || 0), 0) > 0
+            ? farmers.reduce((s: number, f: any) => s + (f.advances?.[d] || 0), 0).toLocaleString(undefined,{maximumFractionDigits:0})
+            : '–'}
+        </td>
+      ))}
+      {/* Total deductions */}
+      <td className="px-1 py-2 text-center text-xs font-bold text-red-700 bg-red-50 border-r">
+        {totalDeductions > 0 ? totalDeductions.toLocaleString(undefined,{maximumFractionDigits:0}) : '–'}
+      </td>
+      {/* Amt payable */}
+      <td className={`sticky right-0 px-2 py-2 text-right text-xs font-bold border-l ${amtPayable < 0 ? 'bg-red-50 text-red-600' : 'bg-teal-50 text-teal-700'}`}>
+        {amtPayable.toLocaleString(undefined,{maximumFractionDigits:0})}
       </td>
     </tr>
   );

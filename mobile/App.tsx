@@ -7,10 +7,11 @@ import HomeScreen from './src/screens/HomeScreen';
 import CollectionScreen from './src/screens/CollectionScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import DriverScreen from './src/screens/DriverScreen';
+import StatementSearchScreen from './src/screens/StatementSearchScreen';
 import { downloadFarmersForGrader } from './src/utils/syncService';
 import { initDB } from './src/utils/offlineStore';
 
-export type Screen = 'home' | 'collection' | 'history' | 'driver';
+export type Screen = 'home' | 'collection' | 'history' | 'driver' | 'statement';
 
 export interface Employee {
   id: number;
@@ -126,6 +127,9 @@ export default function App() {
       )}
       {screen === 'driver' && (
         <DriverScreen employee={employee} onBack={() => setScreen('home')} />
+      )}
+      {screen === 'statement' && (
+        <StatementSearchScreen employee={employee} onBack={() => setScreen('home')} />
       )}
     </>
   );

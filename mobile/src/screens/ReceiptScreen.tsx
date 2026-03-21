@@ -40,43 +40,77 @@ export default function ReceiptScreen({ collection, graderName, routeName, cumul
       <meta charset="utf-8">
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Courier New', monospace; font-size: 12px; width: 80mm; padding: 4mm; }
-        .center { text-align: center; }
-        .bold { font-weight: bold; }
-        .large { font-size: 16px; }
-        .xlarge { font-size: 20px; font-weight: bold; }
-        .divider { border-top: 1px dashed #000; margin: 4px 0; }
+        body {
+          font-family: 'Courier New', Courier, monospace;
+          font-size: 13px;
+          width: 72mm;
+          max-width: 72mm;
+          padding: 2mm 3mm;
+          color: #000;
+          background: #fff;
+        }
+        .c  { text-align: center; }
+        .r  { text-align: right; }
+        .b  { font-weight: bold; }
+        .s  { font-size: 11px; }
+        .xs { font-size: 9px; }
+        .dash { border-top: 1px dashed #000; margin: 5px 0; }
+        .line { border-top: 1px solid #000; margin: 5px 0; }
         .row { display: flex; justify-content: space-between; margin: 2px 0; }
-        .highlight { font-size: 28px; font-weight: bold; text-align: center; margin: 6px 0; }
-        .small { font-size: 10px; }
-        .footer { font-size: 9px; text-align: center; margin-top: 6px; }
+        .litres {
+          font-size: 38px;
+          font-weight: 900;
+          text-align: center;
+          letter-spacing: 2px;
+          margin: 6px 0;
+          border: 2px solid #000;
+          padding: 4px 0;
+        }
+        .farmer {
+          font-size: 16px;
+          font-weight: 900;
+          text-align: center;
+          margin: 4px 0;
+          text-transform: uppercase;
+        }
+        .co-name {
+          font-size: 18px;
+          font-weight: 900;
+          text-align: center;
+          letter-spacing: 1px;
+        }
       </style>
     </head>
     <body>
-      <div class="center bold xlarge">GUTORIA DAIRIES</div>
-      <div class="center small">Enquiries: 0793392375</div>
-      <div class="divider"></div>
-      <div class="row"><span>Receipt No:</span><span class="bold">${receiptNo}</span></div>
-      <div class="row"><span>Date:</span><span>${dateStr}</span></div>
-      <div class="row"><span>Time:</span><span class="bold">${timeStr}</span></div>
-      <div class="row"><span>Route:</span><span>${routeName}</span></div>
-      <div class="divider"></div>
-      <div class="row"><span>Farmer No:</span><span class="bold">${collection.farmerCode}</span></div>
-      <div class="row large bold center">${collection.farmerName}</div>
-      <div class="divider"></div>
-      <div class="center small">LITRES WEIGHED</div>
-      <div class="highlight">${collection.litres.toFixed(1)} L</div>
-      <div class="divider"></div>
-      <div class="row"><span>Cumulative Today:</span><span class="bold">${cumulative.toFixed(1)} L</span></div>
-      <div class="divider"></div>
-      <div class="row"><span>Served by:</span><span class="bold">${graderName}</span></div>
-      <div class="divider"></div>
-      <div class="footer">*** Thank you for your business ***</div>
-      <div style="font-size:8px;text-align:center;color:#555;margin-top:6px;border-top:1px solid #ccc;padding-top:4px">
-        <div style="font-weight:bold">JK SOFTWARE SOLUTIONS</div>
-        <div>Dairy &amp; Business Management Systems</div>
-        <div>&#128222; +254 117 956 599</div>
-      </div>
+      <div class="co-name">GUTORIA DAIRIES</div>
+      <div class="c s">Milk Collection Receipt</div>
+      <div class="c xs">Tel: 0793392375</div>
+      <div class="line"></div>
+
+      <div class="row s"><span>Receipt No:</span><span class="b">${receiptNo}</span></div>
+      <div class="row s"><span>Date:</span><span class="b">${dateStr}</span></div>
+      <div class="row s"><span>Time:</span><span class="b">${timeStr}</span></div>
+      <div class="row s"><span>Route:</span><span class="b">${routeName}</span></div>
+      <div class="row s"><span>Grader:</span><span class="b">${graderName}</span></div>
+      <div class="dash"></div>
+
+      <div class="row s"><span>Farmer No:</span><span class="b">${collection.farmerCode}</span></div>
+      <div class="farmer">${collection.farmerName}</div>
+      <div class="dash"></div>
+
+      <div class="c xs">LITRES COLLECTED</div>
+      <div class="litres">${collection.litres.toFixed(1)} L</div>
+
+      <div class="dash"></div>
+      <div class="row s"><span>Today's Total:</span><span class="b">${cumulative.toFixed(1)} L</span></div>
+      <div class="line"></div>
+
+      <div class="c xs" style="margin-top:4px">*** KEEP THIS RECEIPT ***</div>
+      <div class="c xs">Thank you</div>
+      <div class="line" style="margin-top:6px"></div>
+      <div class="c xs" style="margin-top:3px">Powered by JK SOFTWARE SOLUTIONS</div>
+      <div class="c xs">+254 117 956 599</div>
+      <div style="margin-top:8px"></div>
     </body>
     </html>
   `;

@@ -40,62 +40,99 @@ export default function FarmerStatementScreen({ farmerCode, month, year, onClose
     const html = `
       <!DOCTYPE html><html><head><meta charset="utf-8">
       <style>
-        body { font-family: 'Courier New', monospace; font-size: 11px; margin: 15px; }
-        .center { text-align: center; } .bold { font-weight: bold; }
-        table { width: 100%; border-collapse: collapse; margin: 8px 0; }
-        th, td { border: 1px solid #ccc; padding: 4px 6px; text-align: center; }
-        th { background: #f0f0f0; font-weight: bold; }
-        .total-row { background: #e8f5e9; font-weight: bold; }
-        .divider { border-top: 1px dashed #000; margin: 6px 0; }
-        .header { font-size: 16px; font-weight: 900; }
-        .section { font-size: 10px; color: #555; }
-        .amount { font-size: 14px; font-weight: bold; }
-        .dev { font-size: 8px; color: #777; margin-top: 10px; border-top: 1px solid #ccc; padding-top: 6px; text-align: center; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          font-family: 'Courier New', Courier, monospace;
+          font-size: 12px;
+          width: 72mm;
+          max-width: 72mm;
+          padding: 2mm 3mm;
+          color: #000;
+          background: #fff;
+        }
+        .c   { text-align: center; }
+        .r   { text-align: right; }
+        .b   { font-weight: bold; }
+        .s   { font-size: 11px; }
+        .xs  { font-size: 9px; }
+        .dash{ border-top: 1px dashed #000; margin: 4px 0; }
+        .line{ border-top: 2px solid #000; margin: 4px 0; }
+        .row { display: flex; justify-content: space-between; font-size: 11px; margin: 2px 0; }
+        .co  { font-size: 17px; font-weight: 900; text-align: center; letter-spacing: 1px; }
+        .ttl { font-size: 13px; font-weight: 900; text-align: center; }
+        .day-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        .day-table td { padding: 2px 3px; border-bottom: 1px dotted #bbb; }
+        .day-table .dn { width: 20%; font-weight: bold; }
+        .day-table .lv { width: 30%; text-align: right; }
+        .total-line { display: flex; justify-content: space-between; font-size: 13px; font-weight: 900; margin: 3px 0; border-top: 2px solid #000; padding-top: 3px; }
+        .deduct-row { display: flex; justify-content: space-between; font-size: 11px; margin: 2px 0; padding-left: 4px; }
+        .net-pay { font-size: 16px; font-weight: 900; text-align: center; border: 2px solid #000; padding: 4px; margin: 5px 0; }
       </style>
       </head><body>
-      <div class="center bold header">GUTORIA DAIRIES</div>
-      <div class="center section">Enquiries: 0793392375</div>
-      <div class="divider"></div>
-      <div class="center bold" style="font-size:13px">FARMER ${isMidMonth ? 'MID-MONTH' : 'END OF MONTH'} STATEMENT</div>
-      <div class="center" style="font-size:11px;color:#555">${data.period}</div>
-      <div class="center section">${MONTHS[month-1]} ${year}</div>
-      <div class="divider"></div>
-      <table>
-        <tr><td class="bold">Farmer No:</td><td class="bold">${data.farmer.code}</td></tr>
-        <tr><td>Name:</td><td class="bold">${data.farmer.name}</td></tr>
-        <tr><td>Route:</td><td>${data.farmer.route?.name || '–'}</td></tr>
-        <tr><td>Price/Litre:</td><td>KES ${data.farmer.pricePerLitre}</td></tr>
-      </table>
-      <div class="divider"></div>
-      <div class="center bold section">DAILY MILK DELIVERIES</div>
-      <table>
-        <tr><th>Day</th><th>Litres</th><th>Day</th><th>Litres</th></tr>
-        ${days.reduce((rows: string[], d, i) => {
-          if (i % 2 === 0) {
-            const d2 = days[i+1];
-            const l1 = data.dailyLitres[d] || 0;
-            const l2 = d2 ? (data.dailyLitres[d2] || 0) : null;
-            rows.push(`<tr><td>${d}</td><td>${l1 > 0 ? l1.toFixed(1) : '–'}</td><td>${d2 || ''}</td><td>${d2 ? (l2 && l2 > 0 ? l2.toFixed(1) : '–') : ''}</td></tr>`);
+
+      <div class="co">GUTORIA DAIRIES</div>
+      <div class="c s">Milk Payment Statement</div>
+      <div class="c xs">Tel: 0793392375</div>
+      <div class="line"></div>
+
+      <div class="ttl">${isMidMonth ? 'MID-MONTH STATEMENT' : 'END OF MONTH STATEMENT'}</div>
+      <div class="c xs">${data.period}</div>
+      <div class="dash"></div>
+
+      <div class="row"><span>Farmer No:</span><span class="b">${data.farmer.code}</span></div>
+      <div class="c b" style="font-size:14px;margin:3px 0;text-transform:uppercase">${data.farmer.name}</div>
+      <div class="row"><span>Route:</span><span>${data.farmer.route?.name || '–'}</span></div>
+      <div class="row"><span>Rate:</span><span class="b">KES ${data.farmer.pricePerLitre}/Litre</span></div>
+      <div class="row"><span>Payment:</span><span>${data.farmer.paymentMethod === 'MPESA' ? 'M-Pesa: ' + (data.farmer.mpesaPhone || data.farmer.phone) : 'Bank'}</span></div>
+      <div class="line"></div>
+
+      <div class="c b s">DAILY MILK DELIVERIES</div>
+      <div class="dash"></div>
+      <table class="day-table">
+        <tr>
+          <td class="b">Day</td><td class="b lv">Litres</td>
+          <td class="b">Day</td><td class="b lv">Litres</td>
+          <td class="b">Day</td><td class="b lv">Litres</td>
+        </tr>
+        ${(() => {
+          const rows = [];
+          for (let i = 0; i < days.length; i += 3) {
+            const cells = [days[i], days[i+1], days[i+2]].map(d => {
+              if (!d) return '<td></td><td class="lv"></td>';
+              const l = data.dailyLitres[d] || 0;
+              return `<td class="dn">${d}</td><td class="lv">${l > 0 ? l.toFixed(1) : '–'}</td>`;
+            }).join('');
+            rows.push(`<tr>${cells}</tr>`);
           }
-          return rows;
-        }, []).join('')}
+          return rows.join('');
+        })()}
       </table>
-      <div class="divider"></div>
-      <table>
-        <tr class="total-row"><td class="bold">Total Litres:</td><td class="bold amount">${data.totalLitres.toFixed(1)} L</td></tr>
-        <tr><td>Gross Pay (@ KES ${data.farmer.pricePerLitre}/L):</td><td class="bold">KES ${data.grossPay.toLocaleString()}</td></tr>
-        ${(Array.isArray(data.advances) ? data.advances : []).map((adv: any) => `<tr><td>Advance — ${adv.label}:</td><td class="bold" style="color:#e65100">- KES ${Number(adv.amount).toLocaleString()}</td></tr>`).join('')}
-        ${data.bfBalance > 0 ? `<tr><td>Balance b/f:</td><td class="bold" style="color:#c62828">- KES ${data.bfBalance.toLocaleString()}</td></tr>` : ''}
-        <tr><td>Total Deductions:</td><td class="bold" style="color:#e65100">- KES ${data.totalAdvances.toLocaleString()}</td></tr>
-        <tr class="total-row"><td class="bold">NET PAY:</td><td class="bold amount" style="color:${data.netPay >= 0 ? '#1b5e20' : '#c62828'}">KES ${data.netPay.toLocaleString()}</td></tr>
-      </table>
-      <div class="divider"></div>
-      <div class="center section">Payment Method: ${data.farmer.paymentMethod === 'MPESA' ? `M-Pesa: ${data.farmer.mpesaPhone || data.farmer.phone}` : `Bank: ${data.farmer.bankName} - ${data.farmer.bankAccount}`}</div>
-      <div class="dev">
-        <div class="bold" style="font-size:9px">JK SOFTWARE SOLUTIONS</div>
-        <div>Dairy & Business Management Systems</div>
-        <div>📞 +254 117 956 599</div>
+      <div class="dash"></div>
+
+      <div class="total-line"><span>TOTAL LITRES:</span><span>${data.totalLitres.toFixed(1)} L</span></div>
+      <div class="row"><span>Gross Pay:</span><span class="b">KES ${Number(data.grossPay).toLocaleString()}</span></div>
+      <div class="line"></div>
+
+      <div class="c xs b">DEDUCTIONS</div>
+      ${data.bfBalance > 0 ? `<div class="deduct-row"><span>Balance b/f:</span><span>- KES ${Number(data.bfBalance).toLocaleString()}</span></div>` : ''}
+      ${(Array.isArray(data.advances) ? data.advances : []).map((adv: any) =>
+        `<div class="deduct-row"><span>Advance ${adv.label}:</span><span>- KES ${Number(adv.amount).toLocaleString()}</span></div>`
+      ).join('')}
+      <div class="row b" style="border-top:1px dashed #000;margin-top:3px;padding-top:3px">
+        <span>Total Deductions:</span>
+        <span>KES ${Number(data.totalDeductions || Number(data.totalAdvances) + Number(data.bfBalance || 0)).toLocaleString()}</span>
       </div>
+      <div class="line"></div>
+
+      <div class="net-pay">NET PAY: KES ${Number(data.netPay).toLocaleString()}</div>
+
+      <div class="c xs">*** OFFICIAL RECEIPT ***</div>
+      <div class="c xs">Keep for your records</div>
+      <div class="line" style="margin-top:6px"></div>
+      <div class="c xs" style="margin-top:3px">Powered by JK SOFTWARE SOLUTIONS</div>
+      <div class="c xs">+254 117 956 599</div>
+      <div style="margin-top:10px"></div>
+
       </body></html>
     `;
 

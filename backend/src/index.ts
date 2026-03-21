@@ -78,7 +78,23 @@ app.use('/api/drivers', driverRoutes);
 // ─── Error handler (must be last) ─────────────────────────────────────────────
 app.use(errorHandler);
 
-app.listen(PORT, () => {
+// ─── Auto-migrate missing columns on startup ──────────────────────────────────
+async function runMigrations() {
+  try {
+    // Add totalDeductions column if missing
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "FarmerPayment"
+      ADD COLUMN IF NOT EXISTS "totalDeductions" DECIMAL NOT NULL DEFAULT 0;
+    `);
+    logger.info('✓ DB migrations complete');
+  } catch (e: any) {
+    // Silently continue — column may already exist or DB may not support this syntax
+    logger.warn('Migration note:', e?.message?.slice(0, 80));
+  }
+}
+
+app.listen(PORT, async () => {
+  await runMigrations();
   logger.info(`🐄 Gutoria API running on http://localhost:${PORT}`);
 });
 

@@ -143,13 +143,14 @@ router.get('/', async (req, res) => {
     const key = farmer.route?.code || 'UNKNOWN';
     if (!byRoute[key]) byRoute[key] = {
       routeCode: farmer.route?.code, routeName: farmer.route?.name, routeId: farmer.route?.id,
-      farmers: [], totalLitres: 0, totalGross: 0, totalAdvances: 0, totalNet: 0, negativeCount: 0,
+      farmers: [], totalLitres: 0, totalGross: 0, totalAdvances: 0, totalDeductions: 0, totalNet: 0, negativeCount: 0,
     };
     byRoute[key].farmers.push(r);
-    byRoute[key].totalLitres   += totalLitres;
-    byRoute[key].totalGross    += grossPay;
-    byRoute[key].totalAdvances += totalAdvances;
-    byRoute[key].totalNet      += netPay > 0 ? netPay : 0;
+    byRoute[key].totalLitres      += totalLitres;
+    byRoute[key].totalGross       += grossPay;
+    byRoute[key].totalAdvances    += totalAdvances;
+    byRoute[key].totalDeductions  += Number(totalDeductions);
+    byRoute[key].totalNet         += netPay > 0 ? netPay : 0;
     if (netPay < 0) byRoute[key].negativeCount++;
   }
 

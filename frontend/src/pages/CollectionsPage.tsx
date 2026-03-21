@@ -24,13 +24,25 @@ export default function CollectionsPage() {
 
   const manualMut = useMutation({
     mutationFn: () => api.post('/api/collections/manual', { ...manualForm, litres: Number(manualForm.litres), routeId: manualForm.routeId || undefined }),
-    onSuccess: (r) => { showSuccess(`Recorded ${r.data.farmer?.name} — ${manualForm.litres} L`); qc.invalidateQueries({ queryKey: ['collection-journal'] }); setManualForm(f => ({...f, litres: '', farmerCode: ''})); },
+    onSuccess: (r) => {
+      const msg = r.data.replaced ? `Set to ${manualForm.litres} L (replaced ${r.data.previousCount} existing record${r.data.previousCount > 1 ? 's' : ''})` : `Recorded ${manualForm.litres} L`;
+      showSuccess(`${r.data.farmer?.name} — ${msg}`);
+      qc.invalidateQueries({ queryKey: ['collection-journal'] });
+      setManualForm(f => ({...f, litres: '', farmerCode: ''}));
+    },
     onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
   });
 
   const correctMut = useMutation({
     mutationFn: () => api.put('/api/collections/correct-by-farmer', { farmerCode: correctForm.id, collectedAt: correctForm.collectedAt, litres: Number(correctForm.litres) }),
-    onSuccess: (r) => { showSuccess(`Corrected: ${r.data.farmer?.name} → ${correctForm.litres} L`, `Was: ${r.data.previousLitres} L`); qc.invalidateQueries({ queryKey: ['collection-journal'] }); setCorrectForm({ id: '', litres: '', collectedAt: '' }); },
+    onSuccess: (r) => {
+      showSuccess(
+        `Corrected → ${correctForm.litres} L`,
+        `${r.data.farmer?.name} · Was: ${r.data.previousTotal?.toFixed(1)} L · Deleted ${r.data.deletedCount} record(s)`
+      );
+      qc.invalidateQueries({ queryKey: ['collection-journal'] });
+      setCorrectForm({ id: '', litres: '', collectedAt: '' });
+    },
     onError: (e: any) => showError(e?.response?.data?.error || 'Record not found'),
   });
 

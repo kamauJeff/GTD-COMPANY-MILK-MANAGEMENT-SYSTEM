@@ -70,7 +70,7 @@ router.get('/statement', async (req, res) => {
   });
 });
 
-// PUT /api/collections/correct-by-farmer — correct by farmer code/name + date
+// PUT /api/collections/correct-by-farmer — REPLACE all records for farmer+date with exact value
 router.put('/correct-by-farmer', authorize('ADMIN', 'OFFICE'), async (req, res) => {
   const { farmerCode, collectedAt, litres } = req.body;
   if (!farmerCode || !collectedAt || !litres) return res.status(400).json({ error: 'farmerCode, collectedAt and litres are required' });
@@ -81,28 +81,47 @@ router.put('/correct-by-farmer', authorize('ADMIN', 'OFFICE'), async (req, res) 
         { code: farmerCode.toUpperCase() },
         { name: { contains: farmerCode, mode: 'insensitive' } },
       ]
-    }
+    },
+    include: { route: { select: { id: true, supervisorId: true } } },
   });
   if (!farmer) return res.status(404).json({ error: `Farmer "${farmerCode}" not found` });
 
   const dayStart = new Date(collectedAt); dayStart.setHours(0,0,0,0);
   const dayEnd   = new Date(collectedAt); dayEnd.setHours(23,59,59,999);
 
-  // Find the most recent collection for this farmer on that date
-  const existing = await prisma.milkCollection.findFirst({
+  // Get current total before correction
+  const existing = await prisma.milkCollection.findMany({
     where: { farmerId: farmer.id, collectedAt: { gte: dayStart, lte: dayEnd } },
-    orderBy: { collectedAt: 'desc' },
+  });
+  const previousTotal = existing.reduce((s, r) => s + Number(r.litres), 0);
+
+  // DELETE all records for this farmer on this day
+  await prisma.milkCollection.deleteMany({
+    where: { farmerId: farmer.id, collectedAt: { gte: dayStart, lte: dayEnd } },
   });
 
-  if (!existing) return res.status(404).json({ error: `No collection found for ${farmer.name} (${farmer.code}) on ${collectedAt}` });
+  // Get graderId from route
+  let gId = farmer.route?.supervisorId;
+  if (!gId) {
+    const route = await prisma.route.findUnique({ where: { id: farmer.routeId }, select: { supervisorId: true } });
+    gId = route?.supervisorId;
+  }
+  if (!gId) return res.status(400).json({ error: 'No grader assigned to this route' });
 
-  // REPLACE the litres value
-  const updated = await prisma.milkCollection.update({
-    where: { id: existing.id },
-    data: { litres: Number(litres) },
+  // CREATE single clean record with correct litres
+  const corrected = await prisma.milkCollection.create({
+    data: {
+      farmerId:    farmer.id,
+      routeId:     farmer.routeId,
+      graderId:    Number(gId),
+      litres:      Number(litres),
+      collectedAt: new Date(collectedAt + 'T08:00:00'),
+      synced:      true,
+    },
     include: { farmer: { select: { code: true, name: true } }, route: { select: { name: true } } },
   });
-  res.json({ ...updated, previousLitres: Number(existing.litres), corrected: true });
+
+  res.json({ ...corrected, previousTotal, corrected: true, deletedCount: existing.length });
 });
 
 // PUT /api/collections/:id — correct by ID (admin)
@@ -125,7 +144,7 @@ router.delete('/:id', authorize('ADMIN'), async (req, res) => {
   res.json({ success: true });
 });
 
-// POST /api/collections/manual — manual entry by office for a farmer
+// POST /api/collections/manual — UPSERT: replaces any existing record for that farmer+day
 router.post('/manual', authorize('ADMIN', 'OFFICE'), async (req: any, res) => {
   const { farmerCode, routeId, litres, collectedAt } = req.body;
   if (!farmerCode || !litres) return res.status(400).json({ error: 'farmerCode and litres are required' });
@@ -142,27 +161,41 @@ router.post('/manual', authorize('ADMIN', 'OFFICE'), async (req: any, res) => {
   if (!farmer) return res.status(404).json({ error: `Farmer "${farmerCode}" not found` });
 
   const rId = routeId ? Number(routeId) : farmer.routeId;
-  // Get supervisorId (grader) from route — required field
   let gId = farmer.route?.supervisorId;
   if (!gId) {
     const route = await prisma.route.findUnique({ where: { id: rId }, select: { supervisorId: true } });
     gId = route?.supervisorId;
   }
-  // Fallback: use the logged-in user if they are a grader/admin
   if (!gId) gId = req.user?.sub || req.user?.id;
   if (!gId) return res.status(400).json({ error: 'No grader assigned to this route. Assign a grader first.' });
 
+  const collectedAtDate = collectedAt ? new Date(collectedAt + 'T08:00:00') : new Date();
+  const dayStart = new Date(collectedAtDate); dayStart.setHours(0,0,0,0);
+  const dayEnd   = new Date(collectedAtDate); dayEnd.setHours(23,59,59,999);
+
+  // DELETE all existing records for this farmer on this day (prevents duplicates)
+  const existing = await prisma.milkCollection.findMany({
+    where: { farmerId: farmer.id, collectedAt: { gte: dayStart, lte: dayEnd } },
+  });
+  if (existing.length > 0) {
+    await prisma.milkCollection.deleteMany({
+      where: { farmerId: farmer.id, collectedAt: { gte: dayStart, lte: dayEnd } },
+    });
+  }
+
+  // CREATE single clean record
   const collection = await prisma.milkCollection.create({
     data: {
       farmerId:    farmer.id,
       routeId:     rId,
       graderId:    Number(gId),
       litres:      Number(litres),
-      collectedAt: collectedAt ? new Date(collectedAt + 'T08:00:00') : new Date(),
+      collectedAt: collectedAtDate,
+      synced:      true,
     },
     include: { farmer: { select: { code: true, name: true } }, route: { select: { name: true } } },
   });
-  res.status(201).json(collection);
+  res.status(201).json({ ...collection, replaced: existing.length > 0, previousCount: existing.length });
 });
 
 // POST /api/collections/advance/correct — ADD to advance or SET b/f

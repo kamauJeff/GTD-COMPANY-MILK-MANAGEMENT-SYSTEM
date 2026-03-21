@@ -23,7 +23,12 @@ router.get('/statement', async (req, res) => {
   const m = Number(month); const y = Number(year);
 
   const farmer = await prisma.farmer.findFirst({
-    where: { code: String(farmerCode).toUpperCase() },
+    where: {
+      OR: [
+        { code: String(farmerCode).toUpperCase() },
+        { name: { contains: String(farmerCode), mode: 'insensitive' } },
+      ]
+    },
     include: { route: { select: { name: true } } },
   });
   if (!farmer) return res.status(404).json({ error: 'Farmer not found' });
@@ -31,11 +36,21 @@ router.get('/statement', async (req, res) => {
   const start = new Date(y, m - 1, 1);
   const end   = new Date(y, m, 1);
 
-  const [collections, advances] = await Promise.all([
-    prisma.milkCollection.findMany({ where: { farmerId: farmer.id, collectedAt: { gte: start, lt: end } } }),
-    prisma.farmerAdvance.findMany({ where: { farmerId: farmer.id, advanceDate: { gte: start, lt: end } } }),
+  const [collections, advances, deductions] = await Promise.all([
+    prisma.milkCollection.findMany({
+      where: { farmerId: farmer.id, collectedAt: { gte: start, lt: end } },
+      orderBy: { collectedAt: 'asc' },
+    }),
+    prisma.farmerAdvance.findMany({
+      where: { farmerId: farmer.id, advanceDate: { gte: start, lt: end } },
+      orderBy: { advanceDate: 'asc' }, // chronological
+    }),
+    prisma.farmerDeduction.findMany({
+      where: { farmerId: farmer.id, periodMonth: m, periodYear: y },
+    }),
   ]);
 
+  // Daily litres — sum per day
   const dailyLitres: Record<number, number> = {};
   let totalLitres = 0;
   for (const c of collections) {
@@ -45,28 +60,72 @@ router.get('/statement', async (req, res) => {
   }
 
   const grossPay = totalLitres * Number(farmer.pricePerLitre);
-  const advancesMap: Record<string, number> = {};
+
+  // Advances — group by exact date day, chronologically ordered [5, 10, 20, 25]
+  const ADVANCE_DATES = [5, 10, 20, 25];
+  const advancesByDate: Record<number, number> = {}; // day → total amount
   let totalAdvances = 0;
   for (const a of advances) {
-    const key = new Date(a.advanceDate).toLocaleDateString('en-KE', { day: 'numeric', month: 'short' });
-    advancesMap[key] = (advancesMap[key] || 0) + Number(a.amount);
+    const day = new Date(a.advanceDate).getDate();
+    advancesByDate[day] = (advancesByDate[day] || 0) + Number(a.amount);
     totalAdvances += Number(a.amount);
   }
+  // Build ordered advances array for display
+  const advancesOrdered: { day: number; label: string; amount: number }[] = [];
+  const sortedDays = Object.keys(advancesByDate).map(Number).sort((a, b) => a - b);
+  for (const day of sortedDays) {
+    advancesOrdered.push({
+      day,
+      label: `${day}th ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1]}`,
+      amount: advancesByDate[day],
+    });
+  }
 
+  // B/f: check previous month negative payment OR current month b/f deductions
   const prevMonth = m === 1 ? 12 : m - 1;
   const prevYear  = m === 1 ? y - 1 : y;
-  const prevNeg = await prisma.farmerPayment.findFirst({
-    where: { farmerId: farmer.id, periodMonth: prevMonth, periodYear: prevYear, netPay: { lt: 0 }, status: 'PAID' },
-  });
-  const bfBalance = prevNeg ? Math.abs(Number(prevNeg.netPay)) : 0;
-  const netPay = grossPay - totalAdvances - bfBalance;
+
+  const [prevNeg, bfDeduction] = await Promise.all([
+    prisma.farmerPayment.findFirst({
+      where: { farmerId: farmer.id, periodMonth: prevMonth, periodYear: prevYear, netPay: { lt: 0 }, status: 'PAID' },
+    }),
+    // Office-entered b/f correction
+    prisma.farmerDeduction.findFirst({
+      where: { farmerId: farmer.id, periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
+      orderBy: { deductionDate: 'desc' },
+    }),
+  ]);
+
+  // Use office correction if present, else use previous month negative
+  let bfBalance = 0;
+  if (bfDeduction) {
+    bfBalance = Number(bfDeduction.amount);
+  } else if (prevNeg) {
+    bfBalance = Math.abs(Number(prevNeg.netPay));
+  }
+
+  // Other deductions (non-b/f)
+  const otherDeductions = deductions
+    .filter(d => !d.reason.toLowerCase().includes('b/f'))
+    .reduce((s, d) => s + Number(d.amount), 0);
+
+  const totalDeductions = totalAdvances + bfBalance + otherDeductions;
+  const netPay = grossPay - totalDeductions;
 
   res.json({
     farmer: { ...farmer, route: farmer.route },
     daysInMonth: new Date(y, m, 0).getDate(),
-    dailyLitres, totalLitres, grossPay,
-    advances: advancesMap, totalAdvances, bfBalance, netPay,
-    month: m, year: y,
+    dailyLitres,
+    totalLitres,
+    grossPay,
+    advances: advancesOrdered,    // ordered array [{day, label, amount}]
+    totalAdvances,
+    bfBalance,
+    otherDeductions,
+    totalDeductions,
+    netPay,
+    month: m,
+    year: y,
   });
 });
 

@@ -91,7 +91,7 @@ export default function CollectionsPage() {
   // Per-farmer computations matching Excel structure
   const getTotal15 = (f: any) => midDays.reduce((s, d) => s + (f.days[d] || 0), 0);
   const getTotalLitres = (f: any) => days.reduce((s, d) => s + (f.days[d] || 0), 0);
-  const getTotalMoney = (f: any, pricePerLitre = 46) => getTotalLitres(f) * pricePerLitre;
+  const getTotalMoney = (f: any) => getTotalLitres(f) * (f.pricePerLitre || 46);
 
   const handleExport = async () => {
     try {

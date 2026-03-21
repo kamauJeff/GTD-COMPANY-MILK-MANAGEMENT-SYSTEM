@@ -82,7 +82,7 @@ export default function FarmerStatementScreen({ farmerCode, month, year, onClose
       <table>
         <tr class="total-row"><td class="bold">Total Litres:</td><td class="bold amount">${data.totalLitres.toFixed(1)} L</td></tr>
         <tr><td>Gross Pay (@ KES ${data.farmer.pricePerLitre}/L):</td><td class="bold">KES ${data.grossPay.toLocaleString()}</td></tr>
-        ${Object.entries(data.advances || {}).map(([date, amt]: any) => `<tr><td>Advance (${date}):</td><td class="bold" style="color:#e65100">- KES ${Number(amt).toLocaleString()}</td></tr>`).join('')}
+        ${(Array.isArray(data.advances) ? data.advances : []).map((adv: any) => `<tr><td>Advance — ${adv.label}:</td><td class="bold" style="color:#e65100">- KES ${Number(adv.amount).toLocaleString()}</td></tr>`).join('')}
         ${data.bfBalance > 0 ? `<tr><td>Balance b/f:</td><td class="bold" style="color:#c62828">- KES ${data.bfBalance.toLocaleString()}</td></tr>` : ''}
         <tr><td>Total Deductions:</td><td class="bold" style="color:#e65100">- KES ${data.totalAdvances.toLocaleString()}</td></tr>
         <tr class="total-row"><td class="bold">NET PAY:</td><td class="bold amount" style="color:${data.netPay >= 0 ? '#1b5e20' : '#c62828'}">KES ${data.netPay.toLocaleString()}</td></tr>
@@ -134,10 +134,10 @@ export default function FarmerStatementScreen({ farmerCode, month, year, onClose
             <Text style={s.farmerMeta}>{data.farmer.route?.name} · KES {data.farmer.pricePerLitre}/L</Text>
           </View>
 
-          {/* Daily litres grid */}
+          {/* Daily litres grid — 7 per row calendar style */}
           <Text style={s.sectionTitle}>DAILY DELIVERIES</Text>
-          <View style={s.daysGrid}>
-            {days.map(d => {
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3, marginBottom: 16 }}>
+            {Array.from({ length: data.daysInMonth }, (_, i) => i + 1).map(d => {
               const litres = data.dailyLitres[d] || 0;
               return (
                 <View key={d} style={[s.dayCell, litres > 0 && s.dayCellActive]}>
@@ -155,11 +155,11 @@ export default function FarmerStatementScreen({ farmerCode, month, year, onClose
             <View style={s.divider} />
             <Row label="DEDUCTIONS" value="" />
             {data.bfBalance > 0 && <Row label="  Balance b/f" value={`- KES ${Number(data.bfBalance).toLocaleString()}`} negative />}
-            {Object.entries(data.advances || {}).map(([d, amt]: any) => (
-              <Row key={d} label={`  Advance (${d})`} value={`- KES ${Number(amt).toLocaleString()}`} negative />
+            {(Array.isArray(data.advances) ? data.advances : Object.entries(data.advances || {}).map(([label, amount]) => ({ label, amount }))).map((adv: any, i: number) => (
+              <Row key={i} label={`  Advance — ${adv.label || adv[0]}`} value={`- KES ${Number(adv.amount || adv[1]).toLocaleString()}`} negative />
             ))}
             <View style={s.divider} />
-            <Row label="Total Deductions" value={`- KES ${(Number(data.totalAdvances) + Number(data.bfBalance || 0)).toLocaleString()}`} negative />
+            <Row label="Total Deductions" value={`- KES ${Number(data.totalDeductions || Number(data.totalAdvances) + Number(data.bfBalance || 0)).toLocaleString()}`} negative />
             <View style={s.divider} />
             <Row label="NET PAY" value={`KES ${Number(data.netPay).toLocaleString()}`} highlight netPay={data.netPay} />
           </View>
@@ -201,7 +201,7 @@ const s = StyleSheet.create({
   farmerMeta:  { fontSize: 12, color: '#4a7090', marginTop: 2 },
   sectionTitle:{ fontSize: 10, fontWeight: '700', color: '#4a7090', letterSpacing: 2, marginBottom: 10 },
   daysGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 20 },
-  dayCell:     { width: 48, backgroundColor: CARD, borderRadius: 8, padding: 4, alignItems: 'center', borderWidth: 1, borderColor: '#1e3d5c' },
+  dayCell:     { width: 44, backgroundColor: CARD, borderRadius: 6, padding: 4, alignItems: 'center', borderWidth: 1, borderColor: '#1e3d5c' },
   dayCellActive:{ borderColor: GREEN, backgroundColor: '#0a2a14' },
   dayNum:      { fontSize: 9, color: '#4a7090' },
   dayLitres:   { fontSize: 11, color: '#4a7090', fontWeight: '600' },

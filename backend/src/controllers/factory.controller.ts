@@ -43,9 +43,14 @@ export const getDrivers = async (_req: Request, res: Response) => {
 
 // ─── Factory Receipts ─────────────────────────────────────────────────────────
 export const getReceipts = async (req: Request, res: Response) => {
-  const { month, year } = req.query;
+  const { month, year, date } = req.query;
   const where: any = {};
-  if (month && year) {
+  if (date) {
+    // Specific day filter
+    const d = new Date(date as string); d.setHours(0,0,0,0);
+    const nextDay = new Date(d); nextDay.setDate(d.getDate() + 1);
+    where.receivedAt = { gte: d, lt: nextDay };
+  } else if (month && year) {
     where.receivedAt = { gte: new Date(parseInt(year as string), parseInt(month as string) - 1, 1), lte: new Date(parseInt(year as string), parseInt(month as string), 0, 23, 59, 59) };
   }
   const receipts = await prisma.factoryReceipt.findMany({ where, include: { grader: { select: { id: true, name: true, code: true } } }, orderBy: { receivedAt: 'desc' } });
@@ -68,9 +73,13 @@ export const deleteReceipt = async (req: Request, res: Response) => {
 
 // ─── Pasteurization Batches ───────────────────────────────────────────────────
 export const getBatches = async (req: Request, res: Response) => {
-  const { month, year } = req.query;
+  const { month, year, date } = req.query;
   const where: any = {};
-  if (month && year) {
+  if (date) {
+    const d = new Date(date as string); d.setHours(0,0,0,0);
+    const nextDay = new Date(d); nextDay.setDate(d.getDate() + 1);
+    where.processedAt = { gte: d, lt: nextDay };
+  } else if (month && year) {
     where.processedAt = { gte: new Date(parseInt(year as string), parseInt(month as string) - 1, 1), lte: new Date(parseInt(year as string), parseInt(month as string), 0, 23, 59, 59) };
   }
   const batches = await prisma.pasteurizationBatch.findMany({ where, orderBy: { processedAt: 'desc' } });
@@ -101,9 +110,13 @@ export const deleteBatch = async (req: Request, res: Response) => {
 
 // ─── Deliveries to Shops ──────────────────────────────────────────────────────
 export const getDeliveries = async (req: Request, res: Response) => {
-  const { month, year } = req.query;
+  const { month, year, date } = req.query;
   const where: any = {};
-  if (month && year) {
+  if (date) {
+    const d = new Date(date as string); d.setHours(0,0,0,0);
+    const nextDay = new Date(d); nextDay.setDate(d.getDate() + 1);
+    where.deliveredAt = { gte: d, lt: nextDay };
+  } else if (month && year) {
     where.deliveredAt = { gte: new Date(parseInt(year as string), parseInt(month as string) - 1, 1), lte: new Date(parseInt(year as string), parseInt(month as string), 0, 23, 59, 59) };
   }
   const deliveries = await prisma.deliveryToShop.findMany({
@@ -204,3 +217,6 @@ export const getLiquidExcel = async (req: Request, res: Response) => {
   const { month, year } = req.query;
   res.json({ message: 'Excel export coming soon', month, year });
 };
+
+// Also export for shop monthly grid - shops controller needs this
+export { getLiquidGrid as getLiquidGridExport };

@@ -53,6 +53,7 @@ async function computeFarmerPayment(farmerId: number, month: number, year: numbe
   const carriedForward = prevPayment ? Math.abs(Number(prevPayment.netPay)) : 0;
 
   const netPay = grossPay - totalAdvances - totalDeductions - carriedForward;
+  const combinedDeductions = totalAdvances + totalDeductions + carriedForward; // b/f + advances + other
 
   return {
     farmer: {
@@ -63,8 +64,12 @@ async function computeFarmerPayment(farmerId: number, month: number, year: numbe
       paidOn15th: farmer.paidOn15th,
       route: farmer.route,
     },
-    totalLitres, grossPay, totalAdvances, totalDeductions,
-    carriedForward, netPay, pricePerLitre: Number(farmer.pricePerLitre),
+    totalLitres, grossPay,
+    totalAdvances,          // advances only
+    totalDeductions: combinedDeductions, // ALL deductions: b/f + advances + other
+    otherDeductions: totalDeductions,    // non-advance deductions (AI charges etc.)
+    carriedForward,
+    netPay, pricePerLitre: Number(farmer.pricePerLitre),
   };
 }
 

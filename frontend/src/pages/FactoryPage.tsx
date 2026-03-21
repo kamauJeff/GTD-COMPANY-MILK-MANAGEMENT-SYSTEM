@@ -10,6 +10,7 @@ export default function FactoryPage() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [tab, setTab] = useState<'receipts'|'batches'|'deliveries'|'liquid'>('receipts');
+  const [selectedDate, setSelectedDate] = useState<string>('');  // '' = show full month
   const qc = useQueryClient();
 
   // Stats
@@ -27,8 +28,8 @@ export default function FactoryPage() {
 
   // Receipts
   const { data: receiptsData, isLoading: loadingReceipts } = useQuery({
-    queryKey: ['receipts', month, year],
-    queryFn: () => factoryApi.receipts({ month, year }),
+    queryKey: ['receipts', month, year, selectedDate],
+    queryFn: () => factoryApi.receipts({ month, year, date: selectedDate || undefined }),
     enabled: tab === 'receipts',
   });
   const receipts: any[] = receiptsData?.data ?? [];
@@ -42,8 +43,8 @@ export default function FactoryPage() {
 
   // Batches
   const { data: batchesData, isLoading: loadingBatches } = useQuery({
-    queryKey: ['batches', month, year],
-    queryFn: () => factoryApi.batches({ month, year }),
+    queryKey: ['batches', month, year, selectedDate],
+    queryFn: () => factoryApi.batches({ month, year, date: selectedDate || undefined }),
     enabled: tab === 'batches',
   });
   const batches: any[] = batchesData?.data ?? [];
@@ -58,8 +59,8 @@ export default function FactoryPage() {
 
   // Deliveries
   const { data: deliveriesData, isLoading: loadingDeliveries } = useQuery({
-    queryKey: ['deliveries', month, year],
-    queryFn: () => factoryApi.deliveries({ month, year }),
+    queryKey: ['deliveries', month, year, selectedDate],
+    queryFn: () => factoryApi.deliveries({ month, year, date: selectedDate || undefined }),
     enabled: tab === 'deliveries',
   });
   const deliveries: any[] = deliveriesData?.data ?? [];
@@ -88,15 +89,34 @@ export default function FactoryPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Factory</h1>
-          <p className="text-sm text-gray-500">Receipts · Pasteurization · Deliveries · {MONTHS[month-1]} {year}</p>
+          <p className="text-sm text-gray-500">Receipts · Pasteurization · Deliveries · {selectedDate ? new Date(selectedDate).toLocaleDateString('en-KE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : `${MONTHS[month-1]} ${year}`}</p>
         </div>
-        <div className="flex gap-2">
-          <select value={month} onChange={e => setMonth(Number(e.target.value))} className="px-3 py-2 border rounded-lg text-sm">
+        <div className="flex gap-2 items-center flex-wrap">
+          <select value={month} onChange={e => { setMonth(Number(e.target.value)); setSelectedDate(''); }} className="px-3 py-2 border rounded-lg text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
             {MONTHS.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
           </select>
-          <select value={year} onChange={e => setYear(Number(e.target.value))} className="px-3 py-2 border rounded-lg text-sm">
+          <select value={year} onChange={e => { setYear(Number(e.target.value)); setSelectedDate(''); }} className="px-3 py-2 border rounded-lg text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
             {[2024,2025,2026].map(y => <option key={y}>{y}</option>)}
           </select>
+          {/* Day filter */}
+          <div className="flex items-center gap-1">
+            <input type="date" value={selectedDate}
+              onChange={e => {
+                const d = e.target.value;
+                setSelectedDate(d);
+                if (d) {
+                  const dt = new Date(d);
+                  setMonth(dt.getMonth() + 1);
+                  setYear(dt.getFullYear());
+                }
+              }}
+              className="px-3 py-2 border rounded-lg text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100" />
+            {selectedDate && (
+              <button onClick={() => setSelectedDate('')}
+                className="px-2 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 border dark:border-gray-600"
+                title="Clear date filter">✕ Full Month</button>
+            )}
+          </div>
         </div>
       </div>
 

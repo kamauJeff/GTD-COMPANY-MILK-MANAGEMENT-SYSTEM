@@ -325,35 +325,57 @@ export async function getShopsReport(req: Request, res: Response) {
     orderBy: { name: 'asc' },
   });
 
-  const [drops, sales] = await Promise.all([
+  // Get previous month's unsold (opening stock = delivered - sold from prev month)
+  const prevStart = new Date(year, month - 2, 1);
+  const prevEnd   = new Date(year, month - 1, 1);
+
+  const [drops, sales, prevDrops, prevSales] = await Promise.all([
     prisma.shopDrop.groupBy({ by: ['shopId'], where: { droppedAt: { gte: start, lt: end } }, _sum: { litres: true } }),
     prisma.shopSale.groupBy({ by: ['shopId'], where: { saleDate: { gte: start, lt: end } }, _sum: { litresSold: true, cashCollected: true, tillAmount: true } }),
+    // Previous month drops
+    prisma.shopDrop.groupBy({ by: ['shopId'], where: { droppedAt: { gte: prevStart, lt: prevEnd } }, _sum: { litres: true } }),
+    // Previous month sales
+    prisma.shopSale.groupBy({ by: ['shopId'], where: { saleDate: { gte: prevStart, lt: prevEnd } }, _sum: { litresSold: true } }),
   ]);
 
-  const dropMap  = new Map(drops.map(d => [d.shopId, Number(d._sum.litres || 0)]));
-  const saleMap  = new Map(sales.map(s => [s.shopId, { sold: Number(s._sum.litresSold || 0), cash: Number(s._sum.cashCollected || 0), till: Number(s._sum.tillAmount || 0) }]));
+  const dropMap     = new Map(drops.map(d    => [d.shopId, Number(d._sum.litres || 0)]));
+  const saleMap     = new Map(sales.map(s    => [s.shopId, { sold: Number(s._sum.litresSold || 0), cash: Number(s._sum.cashCollected || 0), till: Number(s._sum.tillAmount || 0) }]));
+  const prevDropMap = new Map(prevDrops.map(d => [d.shopId, Number(d._sum.litres || 0)]));
+  const prevSaleMap = new Map(prevSales.map(s => [s.shopId, Number(s._sum.litresSold || 0)]));
 
   const shopsData = shops.map(shop => {
-    const delivered = dropMap.get(shop.id) || 0;
-    const saleData  = saleMap.get(shop.id) || { sold: 0, cash: 0, till: 0 };
-    const expectedRevenue = saleData.sold * 60;
-    const actualRevenue   = saleData.cash + saleData.till;
+    const delivered    = dropMap.get(shop.id) || 0;
+    const saleData     = saleMap.get(shop.id) || { sold: 0, cash: 0, till: 0 };
+    // Opening = previous month (delivered - sold) — what was left over
+    const prevDelivered  = prevDropMap.get(shop.id) || 0;
+    const prevSold       = prevSaleMap.get(shop.id) || 0;
+    const openingLitres  = Math.max(0, prevDelivered - prevSold);
+    const availableForSale = openingLitres + delivered;
+    const variance         = availableForSale - saleData.sold;
+    const expectedRevenue  = saleData.sold * 60;
+    const actualRevenue    = saleData.cash + saleData.till;
     return {
       shopId: shop.id, shopName: shop.name, keeperName: shop.keeper?.name || '–',
-      delivered, ...saleData,
+      openingLitres, delivered, availableForSale,
+      ...saleData,
+      variance,
       unaccounted: delivered - saleData.sold,
       expectedRevenue, actualRevenue,
       revenueVariance: actualRevenue - expectedRevenue,
+      performancePct: availableForSale > 0 ? Math.round((saleData.sold / availableForSale) * 100) : 0,
     };
-  }).filter(s => s.delivered > 0 || s.sold > 0);
+  }).filter(s => s.delivered > 0 || s.sold > 0 || s.openingLitres > 0);
 
   res.json({
     shops: shopsData,
     totals: {
-      delivered: shopsData.reduce((s, r) => s + r.delivered, 0),
-      sold:      shopsData.reduce((s, r) => s + r.sold, 0),
-      cash:      shopsData.reduce((s, r) => s + r.cash, 0),
-      till:      shopsData.reduce((s, r) => s + r.till, 0),
+      openingLitres: shopsData.reduce((s, r) => s + r.openingLitres, 0),
+      delivered:     shopsData.reduce((s, r) => s + r.delivered, 0),
+      available:     shopsData.reduce((s, r) => s + r.availableForSale, 0),
+      sold:          shopsData.reduce((s, r) => s + r.sold, 0),
+      variance:      shopsData.reduce((s, r) => s + r.variance, 0),
+      cash:          shopsData.reduce((s, r) => s + r.cash, 0),
+      till:          shopsData.reduce((s, r) => s + r.till, 0),
     },
   });
 }

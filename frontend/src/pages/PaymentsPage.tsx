@@ -289,8 +289,7 @@ export default function PaymentsPage() {
                                 </td>
                                 <td className="px-3 py-2.5 font-mono">{f.totalLitres.toFixed(1)} L</td>
                                 <td className="px-3 py-2.5 font-mono">KES {f.grossPay.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
-                                <td className="px-3 py-2.5 font-mono text-red-600">KES {Number(f.totalDeductions ?? f.totalAdvances).toLocaleString(undefined,{maximumFractionDigits:0})}</td>
-                                <td className="px-3 py-2.5 font-mono text-red-500">{f.carriedForward > 0 ? `KES ${f.carriedForward.toLocaleString(undefined,{maximumFractionDigits:0})}` : '–'}</td>
+                                <td className="px-3 py-2.5 font-mono text-red-600">KES {(Number(f.totalDeductions ?? 0) || (Number(f.totalAdvances ?? 0) + Number(f.carriedForward ?? 0))).toLocaleString(undefined,{maximumFractionDigits:0})}</td>
                                 <td className={`px-3 py-2.5 font-bold font-mono ${isNeg ? 'text-red-600' : 'text-green-700'}`}>
                                   KES {f.netPay.toLocaleString(undefined,{maximumFractionDigits:0})}
                                 </td>
@@ -310,7 +309,7 @@ export default function PaymentsPage() {
                             <td colSpan={5} className="px-3 py-2 text-xs font-bold text-gray-600">ROUTE TOTAL</td>
                             <td className="px-3 py-2 font-bold font-mono text-xs">{rg.totalLitres.toFixed(0)} L</td>
                             <td className="px-3 py-2 font-bold font-mono text-xs">KES {rg.totalGross.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
-                            <td className="px-3 py-2 font-bold font-mono text-xs text-red-600">KES {Number(rg.totalDeductions ?? rg.totalAdvances).toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+                            <td className="px-3 py-2 font-bold font-mono text-xs text-red-600">KES {Number(rg.totalDeductions ?? rg.totalAdvances ?? 0).toLocaleString(undefined,{maximumFractionDigits:0})}</td>
                             <td className="px-3 py-2"></td>
                             <td className="px-3 py-2 font-bold font-mono text-xs text-green-700">KES {rg.totalNet.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
                             <td className="px-3 py-2"></td>
@@ -396,7 +395,7 @@ export default function PaymentsPage() {
                         </td>
                         <td className="px-3 py-2.5 font-mono text-xs">{Number(p.grossPay/46).toFixed(0)} L</td>
                         <td className="px-3 py-2.5 font-mono text-xs">KES {Number(p.grossPay).toLocaleString(undefined,{maximumFractionDigits:0})}</td>
-                        <td className="px-3 py-2.5 font-mono text-xs text-red-600">KES {Number(p.totalDeductions ?? p.totalAdvances).toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+                        <td className="px-3 py-2.5 font-mono text-xs text-red-600">KES {Number(p.totalDeductions ?? p.totalAdvances ?? 0).toLocaleString(undefined,{maximumFractionDigits:0})}</td>
                         <td className={`px-3 py-2.5 font-bold font-mono text-xs ${isNeg ? 'text-red-600' : 'text-green-700'}`}>
                           KES {Number(p.netPay).toLocaleString(undefined,{maximumFractionDigits:0})}
                         </td>

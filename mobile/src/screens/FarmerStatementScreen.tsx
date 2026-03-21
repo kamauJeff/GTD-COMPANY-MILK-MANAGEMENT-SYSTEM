@@ -115,9 +115,15 @@ export default function FarmerStatementScreen({ farmerCode, month, year, onClose
       <div class="line"></div>
 
       <div class="c xs b">DEDUCTIONS</div>
-      ${data.bfBalance > 0 ? `<div class="deduct-row"><span>Balance b/f:</span><span>- KES ${Number(data.bfBalance).toLocaleString()}</span></div>` : ''}
-      ${(Array.isArray(data.advances) ? data.advances : []).map((adv: any) =>
-        `<div class="deduct-row"><span>Advance ${adv.label}:</span><span>- KES ${Number(adv.amount).toLocaleString()}</span></div>`
+
+      ${(data.deductionsList && data.deductionsList.length > 0
+        ? data.deductionsList
+        : [
+            ...(data.bfBalance > 0 ? [{ label: 'Balance b/f', amount: data.bfBalance }] : []),
+            ...(Array.isArray(data.advances) ? data.advances.map((a: any) => ({ label: `Advance — ${a.label}`, amount: a.amount })) : []),
+          ]
+      ).map((d: any) =>
+        `<div class="deduct-row"><span>${d.label}:</span><span>- KES ${Number(d.amount).toLocaleString()}</span></div>`
       ).join('')}
       <div class="row b" style="border-top:1px dashed #000;margin-top:3px;padding-top:3px">
         <span>Total Deductions:</span>
@@ -219,12 +225,18 @@ export default function FarmerStatementScreen({ farmerCode, month, year, onClose
             <Row label={`Gross Pay (@ KES ${data.farmer.pricePerLitre}/L)`} value={`KES ${Number(data.grossPay).toLocaleString()}`} />
             <View style={s.divider} />
             <Row label="DEDUCTIONS" value="" />
-            {data.bfBalance > 0 && <Row label="  Balance b/f" value={`- KES ${Number(data.bfBalance).toLocaleString()}`} negative />}
-            {(Array.isArray(data.advances) ? data.advances : Object.entries(data.advances || {}).map(([label, amount]) => ({ label, amount }))).map((adv: any, i: number) => (
-              <Row key={i} label={`  Advance — ${adv.label || adv[0]}`} value={`- KES ${Number(adv.amount || adv[1]).toLocaleString()}`} negative />
+            {/* Use deductionsList if available (full breakdown), otherwise fallback */}
+            {(data.deductionsList && data.deductionsList.length > 0
+              ? data.deductionsList
+              : [
+                  ...(data.bfBalance > 0 ? [{ label: 'Balance b/f', amount: data.bfBalance }] : []),
+                  ...(Array.isArray(data.advances) ? data.advances.map((a: any) => ({ label: `Advance — ${a.label}`, amount: a.amount })) : []),
+                ]
+            ).map((d: any, i: number) => (
+              <Row key={i} label={`  ${d.label}`} value={`- KES ${Number(d.amount).toLocaleString()}`} negative />
             ))}
             <View style={s.divider} />
-            <Row label="Total Deductions" value={`- KES ${Number(data.totalDeductions || Number(data.totalAdvances) + Number(data.bfBalance || 0)).toLocaleString()}`} negative />
+            <Row label="Total Deductions" value={`- KES ${Number(data.totalDeductions ?? Number(data.totalAdvances) + Number(data.bfBalance || 0)).toLocaleString()}`} negative />
             <View style={s.divider} />
             <Row label="NET PAY" value={`KES ${Number(data.netPay).toLocaleString()}`} highlight netPay={data.netPay} />
           </View>

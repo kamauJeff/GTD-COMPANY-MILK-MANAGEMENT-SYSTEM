@@ -108,34 +108,56 @@ router.get('/statement', async (req, res) => {
     });
   }
 
-  // B/f: check previous month negative payment OR current month b/f deductions
-  // B/f: for end-month of a paidOn15th farmer, check if mid-month was negative
+  // ── B/f Logic ──────────────────────────────────────────────────────────────────
+  // Mid-month: b/f = previous end-month negative (if they had one last month)
+  // End-month (paidOn15th): b/f = same-month mid-month negative (unpaid mid carry forward)
+  // End-month (full month): b/f = previous end-month negative
   let bfBalance = 0;
-  if (!mid) {
-    const [midNeg, bfDeduction, prevNeg] = await Promise.all([
-      // Same-month mid-month negative (most important — unpaid mid-month carries forward)
-      prisma.farmerPayment.findFirst({
-        where: { farmerId: farmer.id, periodMonth: m, periodYear: y, isMidMonth: true, netPay: { lt: 0 } },
-      }),
-      // Office-entered b/f correction
-      prisma.farmerDeduction.findFirst({
-        where: { farmerId: farmer.id, periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
-        orderBy: { deductionDate: 'desc' },
-      }),
-      // Previous month negative payment
-      prisma.farmerPayment.findFirst({
-        where: { farmerId: farmer.id, periodMonth: m === 1 ? 12 : m - 1, periodYear: m === 1 ? y - 1 : y, netPay: { lt: 0 }, status: 'PAID' },
-      }),
-    ]);
-    if (bfDeduction) bfBalance = Number(bfDeduction.amount);
-    else if (midNeg) bfBalance = Math.abs(Number(midNeg.netPay));
-    else if (prevNeg) bfBalance = Math.abs(Number(prevNeg.netPay));
+
+  const prevEndMonth = m === 1 ? 12 : m - 1;
+  const prevEndYear  = m === 1 ? y - 1 : y;
+
+  const [bfDeduction, prevEndNeg, midNeg] = await Promise.all([
+    // Office-entered b/f correction (overrides everything)
+    prisma.farmerDeduction.findFirst({
+      where: { farmerId: farmer.id, periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
+      orderBy: { deductionDate: 'desc' },
+    }),
+    // Previous end-month negative payment
+    prisma.farmerPayment.findFirst({
+      where: { farmerId: farmer.id, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
+    }),
+    // Same-month mid-month negative (for paidOn15th end-month statement)
+    prisma.farmerPayment.findFirst({
+      where: { farmerId: farmer.id, periodMonth: m, periodYear: y, isMidMonth: true, netPay: { lt: 0 } },
+    }),
+  ]);
+
+  if (bfDeduction) {
+    // Office correction always wins
+    bfBalance = Number(bfDeduction.amount);
+  } else if (!mid && farmer.paidOn15th && midNeg) {
+    // End-month for paidOn15th farmer: carry forward mid-month negative
+    bfBalance = Math.abs(Number(midNeg.netPay));
+  } else if (prevEndNeg) {
+    // All other cases: carry forward previous end-month negative
+    bfBalance = Math.abs(Number(prevEndNeg.netPay));
   }
 
-  // Other deductions (non-b/f)
+  // ── Other deductions (AI charges, water, etc.) ─────────────────────────────────
+  // For mid-month: only deductions marked as mid-month relevant
+  // For end-month: all non-b/f deductions
   const otherDeductions = deductions
     .filter(d => !d.reason.toLowerCase().includes('b/f'))
     .reduce((s, d) => s + Number(d.amount), 0);
+
+  // Build deductions list for display (advances + b/f + other)
+  const deductionsList: { label: string; amount: number }[] = [];
+  if (bfBalance > 0) deductionsList.push({ label: 'Balance b/f', amount: bfBalance });
+  for (const adv of advancesOrdered) deductionsList.push({ label: `Advance — ${adv.label}`, amount: adv.amount });
+  for (const d of deductions.filter(x => !x.reason.toLowerCase().includes('b/f'))) {
+    deductionsList.push({ label: d.reason, amount: Number(d.amount) });
+  }
 
   const totalDeductions = totalAdvances + bfBalance + otherDeductions;
   const netPay = grossPay - totalDeductions;
@@ -151,6 +173,7 @@ router.get('/statement', async (req, res) => {
     totalLitres,
     grossPay,
     advances: advancesOrdered,
+    deductionsList,
     totalAdvances,
     bfBalance,
     otherDeductions,

@@ -353,7 +353,7 @@ export default function ReportsPage() {
                 <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
-                      <tr>{['Shop','Shopkeeper','Delivered','Sold','Unaccounted','Cash','Till','Expected','Variance','Performance'].map(h => (
+                      <tr>{['Shop','Shopkeeper','Opening','Delivered','Available','Sold','Variance','Cash','Till','Expected Rev','Rev Variance','Performance'].map(h => (
                         <th key={h} className="text-left px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">{h}</th>
                       ))}</tr>
                     </thead>
@@ -365,9 +365,11 @@ export default function ReportsPage() {
                           <tr key={s.shopId} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50">
                             <td className="px-3 py-2.5 font-medium">{s.shopName}</td>
                             <td className="px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400">{s.keeperName || '–'}</td>
+                            <td className={`px-3 py-2.5 font-mono ${Number(s.openingLitres) > 0 ? 'text-orange-600 font-medium' : 'text-gray-300 dark:text-gray-600'}`}>{Number(s.openingLitres || 0).toFixed(0)} L</td>
                             <td className="px-3 py-2.5 font-mono text-blue-700 dark:text-blue-400">{Number(s.delivered).toFixed(0)} L</td>
+                            <td className="px-3 py-2.5 font-mono font-bold text-purple-700 dark:text-purple-400">{Number(s.availableForSale || s.delivered).toFixed(0)} L</td>
                             <td className="px-3 py-2.5 font-mono text-green-700 dark:text-green-400">{Number(s.sold).toFixed(0)} L</td>
-                            <td className={`px-3 py-2.5 font-mono ${Number(s.unaccounted) > 1 ? 'text-red-600 font-bold' : 'text-gray-400'}`}>{Number(s.unaccounted).toFixed(0)} L</td>
+                            <td className={`px-3 py-2.5 font-bold font-mono ${Number(s.variance ?? s.unaccounted) > 1 ? 'text-red-600' : 'text-gray-400'}`}>{Number(s.variance ?? s.unaccounted).toFixed(0)} L</td>
                             <td className="px-3 py-2.5 font-mono">KES {Number(s.cash).toLocaleString()}</td>
                             <td className="px-3 py-2.5 font-mono">KES {Number(s.till).toLocaleString()}</td>
                             <td className="px-3 py-2.5 font-mono">KES {Number(s.expectedRevenue).toLocaleString()}</td>
@@ -392,9 +394,12 @@ export default function ReportsPage() {
                     <tfoot className="bg-gray-50 dark:bg-gray-800 border-t dark:border-gray-700 font-bold">
                       <tr>
                         <td className="px-3 py-2.5 text-xs" colSpan={2}>TOTAL</td>
-                        <td className="px-3 py-2.5 font-mono text-blue-700 dark:text-blue-400">{(shopsReport.totals?.delivered || 0).toFixed(0)} L</td>
-                        <td className="px-3 py-2.5 font-mono text-green-700 dark:text-green-400">{(shopsReport.totals?.sold || 0).toFixed(0)} L</td>
-                        <td colSpan={2} className="px-3 py-2.5 font-mono">KES {(shopsReport.totals?.cash || 0).toLocaleString()}</td>
+                        <td className="px-3 py-2.5 font-mono text-orange-600">{(shopsReport.totals?.openingLitres || 0).toFixed(0)} L</td>
+                        <td className="px-3 py-2.5 font-mono text-blue-700">{(shopsReport.totals?.delivered || 0).toFixed(0)} L</td>
+                        <td className="px-3 py-2.5 font-mono font-bold text-purple-700">{(shopsReport.totals?.available || 0).toFixed(0)} L</td>
+                        <td className="px-3 py-2.5 font-mono text-green-700">{(shopsReport.totals?.sold || 0).toFixed(0)} L</td>
+                        <td className={`px-3 py-2.5 font-mono font-bold ${(shopsReport.totals?.variance || 0) > 5 ? 'text-red-600' : 'text-gray-400'}`}>{(shopsReport.totals?.variance || 0).toFixed(0)} L</td>
+                        <td className="px-3 py-2.5 font-mono">KES {(shopsReport.totals?.cash || 0).toLocaleString()}</td>
                         <td className="px-3 py-2.5 font-mono">KES {(shopsReport.totals?.till || 0).toLocaleString()}</td>
                         <td colSpan={3} />
                       </tr>

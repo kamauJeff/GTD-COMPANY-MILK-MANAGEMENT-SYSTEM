@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
-import { Printer, TrendingUp, AlertTriangle, CheckCircle, Filter } from 'lucide-react';
+import { Printer, TrendingUp, AlertTriangle, CheckCircle, Filter, RefreshCw } from 'lucide-react';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 type ReportTab = 'daily-ledger' | 'payment-mid' | 'payment-end' | 'shops';
@@ -16,21 +16,36 @@ export default function ReportsPage() {
   const [routeId, setRouteId] = useState('');
   const [payFilter, setPayFilter] = useState<PayFilter>('ALL');
   const printRef = useRef<HTMLDivElement>(null);
+  const qc = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function refreshAll() {
+    setRefreshing(true);
+    await qc.invalidateQueries({ queryKey: ['report-daily-ledger'] });
+    await qc.invalidateQueries({ queryKey: ['report-litres-summary'] });
+    await qc.invalidateQueries({ queryKey: ['report-payment-mid'] });
+    await qc.invalidateQueries({ queryKey: ['report-payment-end'] });
+    await qc.invalidateQueries({ queryKey: ['report-shops'] });
+    await qc.invalidateQueries({ queryKey: ['payments'] });
+    setRefreshing(false);
+  }
 
   const { data: routesData } = useQuery({ queryKey: ['routes'], queryFn: () => api.get('/api/routes') });
   const routes: any[] = routesData?.data ?? [];
 
   // Daily ledger + litres ledger summary
   const { data: ledgerData, isLoading: ledgerLoading } = useQuery({
-    queryKey: ['report-daily-ledger', date, routeId],
+    queryKey: ['report-daily-ledger', date, routeId, tab === 'daily-ledger'],
     queryFn: () => api.get('/api/reports/daily-ledger', { params: { date, routeId: routeId || undefined } }),
     enabled: tab === 'daily-ledger',
+    staleTime: 0, refetchOnMount: 'always', refetchOnWindowFocus: true,
   });
   const ledger = ledgerData?.data || {};
 
   // Litres ledger summary for that day
   const { data: litresData } = useQuery({
     queryKey: ['report-litres-summary', date],
+    staleTime: 0, refetchOnMount: true,
     queryFn: () => {
       const d = new Date(date);
       return api.get('/api/factory/litres-ledger', { params: { month: d.getMonth()+1, year: d.getFullYear() } });
@@ -40,23 +55,26 @@ export default function ReportsPage() {
   const litresSummary = litresData?.data?.dailySummary?.[new Date(date).getDate()] || {};
 
   const { data: midData, isLoading: midLoading } = useQuery({
-    queryKey: ['report-payment-mid', month, year, routeId],
+    queryKey: ['report-payment-mid', month, year, routeId, tab === 'payment-mid'],
     queryFn: () => api.get('/api/payments', { params: { month, year, isMidMonth: true, status: 'ALL', routeId: routeId || undefined } }),
     enabled: tab === 'payment-mid',
+    staleTime: 0, refetchOnMount: 'always', refetchOnWindowFocus: true,
   });
   const allMidPayments: any[] = midData?.data?.payments ?? [];
 
   const { data: endData, isLoading: endLoading } = useQuery({
-    queryKey: ['report-payment-end', month, year, routeId],
+    queryKey: ['report-payment-end', month, year, routeId, tab === 'payment-end'],
     queryFn: () => api.get('/api/payments', { params: { month, year, isMidMonth: false, status: 'ALL', routeId: routeId || undefined } }),
     enabled: tab === 'payment-end',
+    staleTime: 0, refetchOnMount: 'always', refetchOnWindowFocus: true,
   });
   const allEndPayments: any[] = endData?.data?.payments ?? [];
 
   const { data: shopsData, isLoading: shopsLoading } = useQuery({
-    queryKey: ['report-shops', month, year],
+    queryKey: ['report-shops', month, year, tab === 'shops'],
     queryFn: () => api.get('/api/reports/shops', { params: { month, year } }),
     enabled: tab === 'shops',
+    staleTime: 0, refetchOnMount: 'always', refetchOnWindowFocus: true,
   });
   const shopsReport = shopsData?.data || {};
 
@@ -111,9 +129,15 @@ export default function ReportsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-gray-800 dark:text-gray-100">Reports</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Operational intelligence for informed decisions</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Operational intelligence · Live data</p>
         </div>
         <div className="flex gap-2 flex-wrap items-center">
+          {/* Refresh button — always visible */}
+          <button onClick={refreshAll} disabled={refreshing}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-all ${refreshing ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 border-gray-200 dark:border-gray-600' : 'bg-white dark:bg-gray-800 text-green-600 dark:text-green-400 border-green-300 dark:border-green-700 hover:bg-green-50 dark:hover:bg-green-900/20'}`}>
+            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+            {refreshing ? 'Refreshing...' : 'Refresh Data'}
+          </button>
           {tab !== 'daily-ledger' && (
             <>
               <select value={month} onChange={e => setMonth(Number(e.target.value))} className="px-3 py-2 border rounded-lg text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">

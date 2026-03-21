@@ -59,6 +59,10 @@ export default function PaymentsPage() {
       showSuccess(`Sent ${d.successful}/${d.total} M-Pesa`, `Failed: ${d.failed} · Bank: ${d.bankPayments}`);
       qc.invalidateQueries({ queryKey: ['payments-records'] });
       qc.invalidateQueries({ queryKey: ['payments-summary'] });
+      qc.invalidateQueries({ queryKey: ['payments'] });
+      // Invalidate reports so they reflect the new paid status immediately
+      qc.invalidateQueries({ queryKey: ['report-payment-mid'] });
+      qc.invalidateQueries({ queryKey: ['report-payment-end'] });
     },
     onError: (e: any) => showError(e?.response?.data?.error || 'Disbursement failed'),
   });
@@ -78,13 +82,13 @@ export default function PaymentsPage() {
 
   const runMut = useMutation({
     mutationFn: () => api.post('/api/payments/run', { month, year, isMidMonth, routeId: routeId || undefined }),
-    onSuccess: (r) => { showSuccess(`✅ ${r.data.message || `Generated ${r.data.created} payment records`}`); qc.invalidateQueries({ queryKey: ['payments'] }); },
+    onSuccess: (r) => { showSuccess(`✅ ${r.data.message || `Generated ${r.data.created} payment records`}`); qc.invalidateQueries({ queryKey: ['payments'] }); qc.invalidateQueries({ queryKey: ['report-payment-mid'] }); qc.invalidateQueries({ queryKey: ['report-payment-end'] }); },
     onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
   });
 
   const approveMut = useMutation({
     mutationFn: (rId?: number) => api.post('/api/payments/approve', { month, year, isMidMonth, routeId: rId || routeId || undefined }),
-    onSuccess: (r) => { showSuccess(`✅ ${r.data.approved} farmer${r.data.approved !== 1 ? 's' : ''} approved for payment`); qc.invalidateQueries({ queryKey: ['payments'] }); },
+    onSuccess: (r) => { showSuccess(`✅ ${r.data.approved} farmer${r.data.approved !== 1 ? 's' : ''} approved for payment`); qc.invalidateQueries({ queryKey: ['payments'] }); qc.invalidateQueries({ queryKey: ['report-payment-mid'] }); qc.invalidateQueries({ queryKey: ['report-payment-end'] }); },
     onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
   });
 

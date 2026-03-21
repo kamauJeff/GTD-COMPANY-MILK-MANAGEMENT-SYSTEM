@@ -622,68 +622,6 @@ function PaymentReport({ payments, allPayments, loading, label, month, year, isM
                     <td className="px-3 py-2.5"><span className={statusBadge(p.status)}>{p.status}</span></td>
                   </tr>
                 ))}
-
-  const totalNet = payments.filter((p: any) => Number(p.netPay) > 0).reduce((s: number, p: any) => s + Number(p.netPay), 0);
-
-  return (
-    <div className="space-y-4">
-      {/* Stats — always show full picture */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        {[
-          { label: 'Total Farmers', value: allPayments.length, color: 'text-gray-800 dark:text-gray-100', bg: 'bg-white dark:bg-gray-900' },
-          { label: 'Paid via KopoKopo', value: byMpesa.length, sub: `KES ${byMpesa.reduce((s: number, p: any) => s + Number(p.netPay), 0).toLocaleString()}`, color: 'text-green-700 dark:text-green-400', bg: 'bg-green-50 dark:bg-green-900/20' },
-          { label: 'Paid via Bank', value: byBank.length, sub: `KES ${byBank.reduce((s: number, p: any) => s + Number(p.netPay), 0).toLocaleString()}`, color: 'text-blue-700 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/20' },
-          { label: 'Unpaid', value: unpaid.length, sub: `KES ${unpaid.reduce((s: number, p: any) => s + Number(p.netPay), 0).toLocaleString()}`, color: 'text-yellow-600 dark:text-yellow-400', bg: 'bg-yellow-50 dark:bg-yellow-900/20' },
-          { label: 'Negatives (b/f)', value: negatives.length, sub: 'Carried forward', color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-900/20' },
-        ].map(s => (
-          <div key={s.label} className={`rounded-xl border border-gray-200 dark:border-gray-700 p-3 ${s.bg}`}>
-            <div className="text-xs text-gray-400 mb-1">{s.label}</div>
-            <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
-            {s.sub && <div className="text-xs text-gray-400 mt-0.5">{s.sub}</div>}
-          </div>
-        ))}
-      </div>
-
-      {/* Filtered result label */}
-      {payFilter !== 'ALL' && (
-        <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-xl text-sm text-gray-600 dark:text-gray-300">
-          <Filter size={14} />
-          Showing: <strong>{payFilterLabel[payFilter]}</strong> — {payments.length} farmer{payments.length !== 1 ? 's' : ''} · KES {totalNet.toLocaleString()}
-        </div>
-      )}
-
-      {/* Table */}
-      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
-        {payments.length === 0 ? (
-          <div className="text-center py-12 text-gray-400">No records match this filter</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
-                <tr>{['Code','Farmer','Route','Method','Account','Gross','Advances','Net Pay','Status'].map(h => (
-                  <th key={h} className="text-left px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">{h}</th>
-                ))}</tr>
-              </thead>
-              <tbody>
-                {payments.map((p: any) => (
-                  <tr key={p.id} className={`border-b dark:border-gray-700 last:border-0 ${Number(p.netPay) < 0 ? 'bg-red-50 dark:bg-red-900/10' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}>
-                    <td className="px-3 py-2.5 font-mono text-xs text-gray-400">{p.farmer?.code}</td>
-                    <td className="px-3 py-2.5 font-medium text-xs">{p.farmer?.name}</td>
-                    <td className="px-3 py-2.5 text-xs text-gray-500">{p.farmer?.route?.name}</td>
-                    <td className="px-3 py-2.5">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${p.farmer?.paymentMethod === 'MPESA' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
-                        {p.farmer?.paymentMethod === 'MPESA' ? '📱' : '🏦'} {p.farmer?.paymentMethod}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-400">{p.farmer?.paymentMethod === 'MPESA' ? p.farmer?.mpesaPhone || p.farmer?.phone : p.farmer?.bankAccount}</td>
-                    <td className="px-3 py-2.5 font-mono text-xs">KES {Number(p.grossPay).toLocaleString()}</td>
-                    <td className="px-3 py-2.5 font-mono text-xs text-orange-600">KES {Number(p.totalAdvances).toLocaleString()}</td>
-                    <td className={`px-3 py-2.5 font-bold font-mono text-xs ${Number(p.netPay) < 0 ? 'text-red-600' : 'text-green-700 dark:text-green-400'}`}>
-                      KES {Number(p.netPay).toLocaleString()}
-                    </td>
-                    <td className="px-3 py-2.5"><span className={statusBadge(p.status)}>{p.status}</span></td>
-                  </tr>
-                ))}
               </tbody>
               <tfoot className="bg-gray-50 dark:bg-gray-800 border-t dark:border-gray-700 font-bold">
                 <tr>

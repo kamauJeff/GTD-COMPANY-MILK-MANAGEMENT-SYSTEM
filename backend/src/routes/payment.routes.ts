@@ -129,9 +129,9 @@ router.get('/', async (req, res) => {
     const totalLitres    = collMap.get(farmer.id) || 0;
     const totalAdvances  = advMap.get(farmer.id) || 0;
     if (totalLitres === 0 && totalAdvances === 0) continue;
-    const grossPay       = totalLitres * Number(farmer.pricePerLitre);
+    const grossPay       = Number(totalLitres) * Number(farmer.pricePerLitre);
     const totalDeductions = dedMap.get(farmer.id) || 0;
-    const netPay         = grossPay - totalAdvances - totalDeductions;
+    const netPay         = Number(grossPay) - Number(totalAdvances) - Number(totalDeductions);
     const r = {
       farmer: { id: farmer.id, code: farmer.code, name: farmer.name, phone: farmer.phone,
         mpesaPhone: farmer.mpesaPhone, paymentMethod: farmer.paymentMethod,
@@ -206,10 +206,10 @@ router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
     const litres = collMap.get(f.id) || 0;
     if (litres === 0) continue;
     const price           = priceMap.get(f.id) || 46;
-    const grossPay        = litres * price;
+    const grossPay        = Number(litres) * Number(price);
     const totalAdvances   = advMap.get(f.id)  || 0;
     const totalDeductions = dedMap.get(f.id)  || 0;
-    const netPay          = grossPay - totalAdvances - totalDeductions;
+    const netPay          = Number(grossPay) - Number(totalAdvances) - Number(totalDeductions);
     records.push({
       farmerId: f.id, periodMonth: m, periodYear: y, isMidMonth: mid,
       grossPay, totalAdvances, totalDeductions, netPay,
@@ -274,33 +274,6 @@ router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
   res.json({ created, message: `Generated ${created} payment records` });
 });
 
-  // Compute payments for farmers with collections
-  const records: any[] = [];
-  for (const f of farmers) {
-    const litres = collMap.get(f.id) || 0;
-    if (litres === 0) continue;
-    const grossPay       = litres * priceMap.get(f.id)!;
-    const totalAdvances  = advMap.get(f.id) || 0;
-    const totalDeductions = dedMap.get(f.id) || 0;
-    const netPay         = grossPay - totalAdvances - totalDeductions;
-    records.push({ farmerId: f.id, periodMonth: m, periodYear: y, isMidMonth: mid, grossPay, totalAdvances, totalDeductions, netPay });
-  }
-
-  // Upsert all in parallel batches of 50
-  let created = 0;
-  const BATCH = 50;
-  for (let i = 0; i < records.length; i += BATCH) {
-    const batch = records.slice(i, i + BATCH);
-    await Promise.all(batch.map(r => prisma.farmerPayment.upsert({
-      where: { farmerId_periodMonth_periodYear_isMidMonth: { farmerId: r.farmerId, periodMonth: r.periodMonth, periodYear: r.periodYear, isMidMonth: r.isMidMonth } },
-      update: { grossPay: r.grossPay, totalAdvances: r.totalAdvances, totalDeductions: r.totalDeductions, netPay: r.netPay, status: 'PENDING' },
-      create: r,
-    })));
-    created += batch.length;
-  }
-
-  res.json({ created, message: `Generated ${created} payment records` });
-});
 
 // POST /api/payments/approve — approve payments per route
 router.post('/approve', authorize('ADMIN', 'OFFICE'), async (req, res) => {

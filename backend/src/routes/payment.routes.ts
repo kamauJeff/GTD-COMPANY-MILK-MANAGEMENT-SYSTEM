@@ -97,6 +97,32 @@ router.get('/', async (req, res) => {
       orderBy: [{ farmer: { route: { code: 'asc' } } }, { farmer: { name: 'asc' } }],
     });
 
+    // Compute totalLitres per farmer for this period (for drill-down)
+    const farmerIds = payments.map(p => p.farmerId);
+    const { start, end } = periodDates(m, y, mid);
+    // For paidOn15th end-month, adjust range
+    const collRanges = payments.map(p => {
+      if (!mid && (p.farmer as any).paidOn15th) {
+        return { farmerId: p.farmerId, start: new Date(y, m - 1, 16), end: new Date(y, m, 1) };
+      }
+      return { farmerId: p.farmerId, start, end };
+    });
+    // Batch collection lookup
+    const collAgg = await prisma.milkCollection.groupBy({
+      by: ['farmerId'],
+      where: { farmerId: { in: farmerIds }, collectedAt: { gte: start, lt: new Date(y, m, 1) } },
+      _sum: { litres: true },
+    });
+    const litresMap = new Map(collAgg.map(c => [c.farmerId, Number(c._sum.litres || 0)]));
+
+    // Attach totalLitres and derived price to each payment
+    const enriched = payments.map(p => ({
+      ...p,
+      totalLitres: litresMap.get(p.farmerId) || 0,
+      pricePerLitre: Number((p.farmer as any).pricePerLitre || 0),
+      carriedForward: Math.max(0, Number(p.totalDeductions) - Number(p.totalAdvances)),
+    }));
+
     const totals = {
       count: payments.length,
       totalGross: payments.reduce((s, p) => s + Number(p.grossPay), 0),
@@ -109,7 +135,7 @@ router.get('/', async (req, res) => {
       payable: payments.filter(p => Number(p.netPay) > 0).length,
     };
 
-    return res.json({ payments, totals });
+    return res.json({ payments: enriched, totals });
   }
 
   // Fast batch preview — 4 queries total, no per-farmer loops
@@ -249,6 +275,23 @@ router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
   const endCollMap = new Map(endCollections.map(c => [c.farmerId, Number(c._sum.litres || 0)]));
 
   // ── Compute payment records ──────────────────────────────────────────────────
+  // MATH VERIFICATION:
+  // Mid-month (paidOn15th=true):
+  //   gross    = litres(1-15) × price
+  //   deduct   = advances(5th+10th) + otherDeductions
+  //   netPay   = gross - deduct
+  //
+  // End-month (paidOn15th=true):
+  //   gross    = litres(16-end) × price
+  //   deduct   = advances(20th+25th) + otherDeductions + bfFromMidNegative
+  //   netPay   = gross - deduct
+  //   NOTE: b/f = |midMonthNetPay| only if midNetPay < 0
+  //
+  // Full month (paidOn15th=false):
+  //   gross    = litres(1-end) × price
+  //   deduct   = allAdvances(5+10+20+25) + otherDeductions + prevMonthBf
+  //   netPay   = gross - deduct
+
   const records: any[] = [];
 
   for (const f of farmers) {
@@ -257,23 +300,29 @@ router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
     let advances: number;
 
     if (mid) {
+      // Mid-month: 1-15 only
       litres   = Number(midCollMap.get(f.id)  || 0);
       advances = Number(midAdvMap.get(f.id)   || 0);
     } else if (f.paidOn15th) {
+      // End-month for mid-month farmers: 16-end only
       litres   = Number(endCollMap.get(f.id)  || 0);
       advances = Number(endAdvMap.get(f.id)   || 0);
     } else {
+      // Full month: 1-end
       litres   = Number(fullCollMap.get(f.id) || 0);
       advances = Number(fullAdvMap.get(f.id)  || 0);
     }
 
     if (litres === 0) continue;
 
-    const grossPay        = litres * price;
-    const deductionAmt    = Number(dedMap.get(f.id) || 0);
-    const bfCarried       = (!mid && f.paidOn15th) ? Number(bfMap.get(f.id) || 0) : 0;
-    const totalDeductions = advances + deductionAmt + bfCarried;
-    const netPay          = grossPay - totalDeductions;
+    const grossPay     = litres * price;
+    // otherDeductions = AI charges, water fees etc (NOT b/f, NOT advances)
+    const otherDed     = Number(dedMap.get(f.id) || 0);
+    // b/f only applies to end-month for paidOn15th farmers whose mid-month was negative
+    // For full-month farmers, b/f is handled via deductions entered in the journal
+    const bfCarried    = (!mid && f.paidOn15th) ? Number(bfMap.get(f.id) || 0) : 0;
+    const totalDeductions = advances + otherDed + bfCarried;
+    const netPay       = grossPay - totalDeductions;
 
     records.push({
       farmerId: f.id, periodMonth: m, periodYear: y, isMidMonth: mid,

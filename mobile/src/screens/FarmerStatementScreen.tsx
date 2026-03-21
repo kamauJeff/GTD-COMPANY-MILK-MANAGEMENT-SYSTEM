@@ -14,6 +14,7 @@ interface Props {
 export default function FarmerStatementScreen({ farmerCode, month, year, onClose }: Props) {
   const [loading, setLoading]     = useState(true);
   const [data, setData]           = useState<any>(null);
+  const [error, setError]         = useState<string>('');
   const [isMidMonth, setMidMonth] = useState(false);
   const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -21,10 +22,18 @@ export default function FarmerStatementScreen({ farmerCode, month, year, onClose
 
   async function load() {
     setLoading(true);
+    setError('');
     try {
       const res = await farmersApi.statement({ farmerCode, month, year, isMidMonth });
-      setData(res.data);
-    } catch { Alert.alert('Error', 'Could not load statement'); }
+      if (res.data?.error) {
+        setError(res.data.error);
+      } else {
+        setData(res.data);
+      }
+    } catch (e: any) {
+      const msg = e?.response?.data?.error || e?.message || 'Network error — check connection';
+      setError(msg);
+    }
     setLoading(false);
   }
 
@@ -151,12 +160,40 @@ export default function FarmerStatementScreen({ farmerCode, month, year, onClose
     <View style={s.overlay}>
       <View style={s.modal}>
         <ActivityIndicator color="#3ddc84" size="large" />
-        <Text style={s.loadingText}>Loading statement...</Text>
+        <Text style={s.loadingText}>Loading statement for {farmerCode}...</Text>
+        <Text style={{ color: '#2a4d6a', fontSize: 11, marginTop: 6, textAlign: 'center' }}>
+          {MONTHS[month-1]} {year}
+        </Text>
       </View>
     </View>
   );
 
-  if (!data) return null;
+  if (error || !data) return (
+    <View style={s.overlay}>
+      <View style={[s.modal, { alignItems: 'center', justifyContent: 'center', padding: 32 }]}>
+        <Text style={{ fontSize: 40, marginBottom: 16 }}>⚠️</Text>
+        <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16, textAlign: 'center', marginBottom: 8 }}>
+          Could Not Load Statement
+        </Text>
+        <Text style={{ color: '#f87171', fontSize: 13, textAlign: 'center', marginBottom: 6 }}>
+          {error || 'Unknown error'}
+        </Text>
+        <Text style={{ color: '#4a7090', fontSize: 12, textAlign: 'center', marginBottom: 24 }}>
+          Farmer: {farmerCode} · {MONTHS[month-1]} {year}
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          <TouchableOpacity onPress={load}
+            style={{ backgroundColor: '#0a2a14', borderRadius: 12, paddingHorizontal: 20, paddingVertical: 10, borderWidth: 1, borderColor: '#3ddc84' }}>
+            <Text style={{ color: '#3ddc84', fontWeight: '700' }}>🔄 Retry</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onClose}
+            style={{ backgroundColor: '#1e3d5c', borderRadius: 12, paddingHorizontal: 20, paddingVertical: 10 }}>
+            <Text style={{ color: '#8ab0c8', fontWeight: '700' }}>✕ Close</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
 
   const days = Array.from({ length: data.daysInMonth }, (_, i) => i + 1);
 

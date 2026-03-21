@@ -439,8 +439,24 @@ export default function ReportsPage() {
   );
 }
 
-function PaymentReport({ payments, allPayments, loading, label, month, year, payFilter, payFilterLabel, statusBadge }: any) {
+function PaymentReport({ payments, allPayments, loading, label, month, year, isMid, payFilter, payFilterLabel, statusBadge }: any) {
   const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const [drillFarmer, setDrillFarmer] = useState<any>(null);
+  const [drillData, setDrillData]     = useState<any>(null);
+  const [drillLoading, setDrillLoading] = useState(false);
+
+  async function openDrill(p: any) {
+    setDrillFarmer(p);
+    setDrillData(null);
+    setDrillLoading(true);
+    try {
+      const res = await api.get('/api/collections/statement', {
+        params: { farmerCode: p.farmer?.code, month, year, isMidMonth: isMid },
+      });
+      setDrillData(res.data);
+    } catch {}
+    setDrillLoading(false);
+  }
   const paid    = allPayments.filter((p: any) => p.status === 'PAID');
   const byMpesa = paid.filter((p: any) => p.farmer?.paymentMethod === 'MPESA');
   const byBank  = paid.filter((p: any) => p.farmer?.paymentMethod === 'BANK');
@@ -449,6 +465,163 @@ function PaymentReport({ payments, allPayments, loading, label, month, year, pay
 
   if (loading) return <LoadingCard />;
   if (!allPayments.length) return <EmptyCard msg={`No ${label.toLowerCase()} payment records for ${MONTHS[month-1]} ${year}`} />;
+
+  const totalNet = payments.filter((p: any) => Number(p.netPay) > 0).reduce((s: number, p: any) => s + Number(p.netPay), 0);
+
+  return (
+    <div className="space-y-4">
+      {/* Farmer drill-down modal */}
+      {drillFarmer && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            {/* Header */}
+            <div className="bg-green-800 px-5 py-4 text-white">
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="text-xs text-green-300 font-mono mb-1">{drillFarmer.farmer?.code}</div>
+                  <div className="text-lg font-bold">{drillFarmer.farmer?.name}</div>
+                  <div className="text-xs text-green-200 mt-0.5">{drillFarmer.farmer?.route?.name} · {MONTHS[month-1]} {year}</div>
+                </div>
+                <button onClick={() => setDrillFarmer(null)} className="text-green-200 hover:text-white text-xl">✕</button>
+              </div>
+            </div>
+            {/* Breakdown */}
+            <div className="p-5 space-y-1">
+              <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Payment Breakdown</div>
+
+              {/* Litres & Gross */}
+              <div className="flex justify-between py-2 border-b border-gray-100 dark:border-gray-700">
+                <span className="text-sm text-gray-600 dark:text-gray-300">Rate per Litre</span>
+                <span className="font-mono text-sm">KES {Number(drillFarmer.pricePerLitre || drillFarmer.farmer?.pricePerLitre || 0).toLocaleString()}/L</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-gray-100 dark:border-gray-700">
+                <span className="text-sm text-gray-600 dark:text-gray-300">Total Litres</span>
+                <span className="font-mono text-sm font-bold">{Number(drillFarmer.totalLitres || 0).toFixed(1)} L</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-gray-100 dark:border-gray-700">
+                <span className="text-sm text-gray-600 dark:text-gray-300">Gross Pay</span>
+                <span className="font-mono text-sm font-bold text-blue-600">KES {Number(drillFarmer.grossPay).toLocaleString()}</span>
+              </div>
+
+              {/* Deductions */}
+              <div className="text-xs font-bold text-gray-400 uppercase tracking-widest pt-3 pb-1">Deductions</div>
+              {Number(drillFarmer.carriedForward) > 0 && (
+                <div className="flex justify-between py-1.5 pl-2">
+                  <span className="text-sm text-gray-500 dark:text-gray-400">Balance b/f</span>
+                  <span className="font-mono text-sm text-red-500">- KES {Number(drillFarmer.carriedForward).toLocaleString()}</span>
+                </div>
+              )}
+              {Number(drillFarmer.totalAdvances) > 0 && (
+                <div className="flex justify-between py-1.5 pl-2">
+                  <span className="text-sm text-gray-500 dark:text-gray-400">Advances</span>
+                  <span className="font-mono text-sm text-orange-600">- KES {Number(drillFarmer.totalAdvances).toLocaleString()}</span>
+                </div>
+              )}
+              {(() => {
+                const other = Number(drillFarmer.totalDeductions) - Number(drillFarmer.totalAdvances) - Number(drillFarmer.carriedForward || 0);
+                return other > 0 ? (
+                  <div className="flex justify-between py-1.5 pl-2">
+                    <span className="text-sm text-gray-500 dark:text-gray-400">Other charges</span>
+                    <span className="font-mono text-sm text-red-500">- KES {other.toLocaleString()}</span>
+                  </div>
+                ) : null;
+              })()}
+              <div className="flex justify-between py-2 border-t border-gray-200 dark:border-gray-700 mt-1">
+                <span className="text-sm font-bold text-gray-600 dark:text-gray-300">Total Deductions</span>
+                <span className="font-mono text-sm font-bold text-red-600">- KES {Number(drillFarmer.totalDeductions).toLocaleString()}</span>
+              </div>
+
+              {/* Net */}
+              <div className={`flex justify-between py-3 px-3 rounded-xl mt-2 ${Number(drillFarmer.netPay) >= 0 ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'}`}>
+                <span className="font-bold text-base">NET PAY</span>
+                <span className={`font-mono font-bold text-lg ${Number(drillFarmer.netPay) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600'}`}>
+                  KES {Number(drillFarmer.netPay).toLocaleString()}
+                </span>
+              </div>
+
+              {/* Payment info */}
+              <div className="pt-3 space-y-1">
+                <div className="flex justify-between text-xs text-gray-400">
+                  <span>Payment Method</span>
+                  <span className="font-medium">{drillFarmer.farmer?.paymentMethod === 'MPESA' ? `📱 ${drillFarmer.farmer?.mpesaPhone || drillFarmer.farmer?.phone}` : `🏦 ${drillFarmer.farmer?.bankName} · ${drillFarmer.farmer?.bankAccount}`}</span>
+                </div>
+                <div className="flex justify-between text-xs text-gray-400">
+                  <span>Status</span>
+                  <span className={`font-bold ${drillFarmer.status === 'PAID' ? 'text-green-600' : drillFarmer.status === 'APPROVED' ? 'text-blue-600' : 'text-yellow-600'}`}>{drillFarmer.status}</span>
+                </div>
+                {drillFarmer.paidAt && (
+                  <div className="flex justify-between text-xs text-gray-400">
+                    <span>Paid At</span>
+                    <span>{new Date(drillFarmer.paidAt).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stats — always show full picture */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {[
+          { label: 'Total Farmers', value: allPayments.length, color: 'text-gray-800 dark:text-gray-100', bg: 'bg-white dark:bg-gray-900' },
+          { label: 'Paid via KopoKopo', value: byMpesa.length, sub: `KES ${byMpesa.reduce((s: number, p: any) => s + Number(p.netPay), 0).toLocaleString()}`, color: 'text-green-700 dark:text-green-400', bg: 'bg-green-50 dark:bg-green-900/20' },
+          { label: 'Paid via Bank', value: byBank.length, sub: `KES ${byBank.reduce((s: number, p: any) => s + Number(p.netPay), 0).toLocaleString()}`, color: 'text-blue-700 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/20' },
+          { label: 'Unpaid', value: unpaid.length, sub: `KES ${unpaid.reduce((s: number, p: any) => s + Number(p.netPay), 0).toLocaleString()}`, color: 'text-yellow-600 dark:text-yellow-400', bg: 'bg-yellow-50 dark:bg-yellow-900/20' },
+          { label: 'Negatives (b/f)', value: negatives.length, sub: 'Carried forward', color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-900/20' },
+        ].map(s => (
+          <div key={s.label} className={`rounded-xl border border-gray-200 dark:border-gray-700 p-3 ${s.bg}`}>
+            <div className="text-xs text-gray-400 mb-1">{s.label}</div>
+            <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
+            {s.sub && <div className="text-xs text-gray-400 mt-0.5">{s.sub}</div>}
+          </div>
+        ))}
+      </div>
+
+      {/* Filtered result label */}
+      {payFilter !== 'ALL' && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-xl text-sm text-gray-600 dark:text-gray-300">
+          <Filter size={14} />
+          Showing: <strong>{payFilterLabel[payFilter]}</strong> — {payments.length} farmer{payments.length !== 1 ? 's' : ''} · KES {totalNet.toLocaleString()}
+        </div>
+      )}
+
+      {/* Table */}
+      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+        {payments.length === 0 ? (
+          <div className="text-center py-12 text-gray-400">No records match this filter</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
+                <tr>{['Code','Farmer','Route','Method','Account','Gross','Deductions','Net Pay','Status'].map(h => (
+                  <th key={h} className="text-left px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">{h}</th>
+                ))}</tr>
+              </thead>
+              <tbody>
+                {payments.map((p: any) => (
+                  <tr key={p.id}
+                    onClick={() => setDrillFarmer(p)}
+                    className={`border-b dark:border-gray-700 last:border-0 cursor-pointer ${Number(p.netPay) < 0 ? 'bg-red-50 dark:bg-red-900/10 hover:bg-red-100' : 'hover:bg-green-50 dark:hover:bg-green-900/10'}`}>
+                    <td className="px-3 py-2.5 font-mono text-xs text-gray-400">{p.farmer?.code}</td>
+                    <td className="px-3 py-2.5 font-medium text-xs">
+                      <span className="text-green-600 hover:underline">{p.farmer?.name}</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-gray-500">{p.farmer?.route?.name}</td>
+                    <td className="px-3 py-2.5">
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${p.farmer?.paymentMethod === 'MPESA' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
+                        {p.farmer?.paymentMethod === 'MPESA' ? '📱' : '🏦'} {p.farmer?.paymentMethod}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-400">{p.farmer?.paymentMethod === 'MPESA' ? p.farmer?.mpesaPhone || p.farmer?.phone : p.farmer?.bankAccount}</td>
+                    <td className="px-3 py-2.5 font-mono text-xs">KES {Number(p.grossPay).toLocaleString()}</td>
+                    <td className="px-3 py-2.5 font-mono text-xs text-red-600">KES {Number(p.totalDeductions ?? p.totalAdvances).toLocaleString()}</td>
+                    <td className={`px-3 py-2.5 font-bold font-mono text-xs ${Number(p.netPay) < 0 ? 'text-red-600' : 'text-green-700 dark:text-green-400'}`}>
+                      KES {Number(p.netPay).toLocaleString()}
+                    </td>
+                    <td className="px-3 py-2.5"><span className={statusBadge(p.status)}>{p.status}</span></td>
+                  </tr>
+                ))}
 
   const totalNet = payments.filter((p: any) => Number(p.netPay) > 0).reduce((s: number, p: any) => s + Number(p.netPay), 0);
 

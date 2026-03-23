@@ -16,6 +16,7 @@ import LitresPage from './pages/LitresPage';
 import ProfilePage from './pages/ProfilePage';
 import AdvancesPage from './pages/AdvancesPage';
 import DisbursementPage from './pages/DisbursementPage';
+import StatementPage from './pages/StatementPage';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const token = useAuthStore((s) => s.token);
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="profile"     element={<ProfilePage />} />
         <Route path="advances"    element={<AdvancesPage />} />
         <Route path="disbursement" element={<DisbursementPage />} />
+        <Route path="statements"   element={<StatementPage />} />
       </Route>
     </Routes>
   );

@@ -180,8 +180,11 @@ router.get('/statement', async (req, res) => {
 
   // ── Build ordered deductions list for display ─────────────────────────────────
   const deductionsList: { label: string; amount: number }[] = [];
+  // 1. B/f first
   if (bfBalance > 0) deductionsList.push({ label: 'Balance b/f', amount: bfBalance });
-  for (const adv of advancesOrdered) deductionsList.push({ label: `Advance — ${adv.label}`, amount: adv.amount });
+  // 2. Each advance individually — label already contains "Advance — Nth Mon" from ordinal()
+  for (const adv of advancesOrdered) deductionsList.push({ label: adv.label, amount: adv.amount });
+  // 3. Other charges (AI insemination, water etc.) — exclude b/f and exclude any that duplicate advance amounts
   for (const d of deductions.filter(x => !x.reason.toLowerCase().includes('b/f'))) {
     deductionsList.push({ label: d.reason, amount: Number(d.amount) });
   }

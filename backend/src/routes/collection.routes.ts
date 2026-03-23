@@ -24,48 +24,62 @@ router.get('/statement', async (req, res) => {
   const mid = isMidMonth === 'true';
 
   const searchStr = String(farmerCode || '').trim();
+  const searchUpper = searchStr.toUpperCase();
 
-  const farmer = await prisma.farmer.findFirst({
+  let farmer = await prisma.farmer.findFirst({
     where: {
       OR: [
         ...(farmerId ? [{ id: Number(farmerId) }] : []),
         ...(searchStr ? [
-          { code: searchStr.toUpperCase() },
-          { code: { contains: searchStr.toUpperCase() } },
+          { code: searchUpper },
+          { code: { contains: searchUpper, mode: 'insensitive' as const } },
           { name: { contains: searchStr, mode: 'insensitive' as const } },
         ] : []),
       ]
     },
     include: { route: { select: { name: true } } },
   });
-  if (!farmer) return res.status(404).json({
-    error: `Farmer not found: "${searchStr}". Try syncing the mobile app to download the latest farmer list.`,
-  });
+
+  // Last resort: match by numeric digits only (e.g. "9000" finds "FM9000")
+  if (!farmer && searchStr) {
+    const numericPart = searchStr.replace(/\D/g, '');
+    if (numericPart.length >= 3) {
+      farmer = await prisma.farmer.findFirst({
+        where: { code: { contains: numericPart } },
+        include: { route: { select: { name: true } } },
+      });
+    }
+  }
+
+  if (!farmer) {
+    return res.status(404).json({
+      error: `Farmer "${searchStr}" not found. Check the code is correct (e.g. FM0042). New farmers added via the web will appear here immediately — no sync needed.`,
+    });
+  }
 
   // ── Determine correct date range based on farmer type and period ─────────────
-  // Mid-month request:  always 1–15 (regardless of farmer type)
-  // End-month request + paidOn15th farmer:  16–end (they were already paid 1–15)
-  // End-month request + NOT paidOn15th farmer: full 1–end
-  const midStart  = new Date(y, m - 1, 1);
-  const midEnd    = new Date(y, m - 1, 16);   // exclusive
-  const endStart  = new Date(y, m - 1, 16);
-  const fullEnd   = new Date(y, m, 1);
+  // All dates use UTC midnight to match how the mobile app and frontend store dates
+  const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  // UTC-safe date boundaries
+  const midStart  = new Date(Date.UTC(y, m - 1, 1));
+  const midEnd    = new Date(Date.UTC(y, m - 1, 16));   // exclusive → days 1-15
+  const endStart  = new Date(Date.UTC(y, m - 1, 16));
+  const fullEnd   = new Date(Date.UTC(y, m, 1));         // start of next month
 
   let collStart: Date, collEnd: Date, advStart: Date, advEnd: Date;
   let periodLabel: string;
-  const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
 
   if (mid) {
     collStart = midStart; collEnd = midEnd;
     advStart  = midStart; advEnd  = midEnd;
     periodLabel = `Mid Month (1–15 ${MONTH_NAMES[m-1]} ${y})`;
   } else if (farmer.paidOn15th) {
-    // Already paid 1–15 → end month is only 16–end
     collStart = endStart; collEnd = fullEnd;
     advStart  = endStart; advEnd  = fullEnd;
-    periodLabel = `End Month (16–${new Date(y, m, 0).getDate()} ${MONTH_NAMES[m-1]} ${y})`;
+    periodLabel = `End Month (16–${daysInMonth} ${MONTH_NAMES[m-1]} ${y})`;
   } else {
-    // Full month payer → full 1–end
     collStart = midStart; collEnd = fullEnd;
     advStart  = midStart; advEnd  = fullEnd;
     periodLabel = `Full Month (${MONTH_NAMES[m-1]} ${y})`;
@@ -89,7 +103,9 @@ router.get('/statement', async (req, res) => {
   const dailyLitres: Record<number, number> = {};
   let totalLitres = 0;
   for (const c of collections) {
-    const day = new Date(c.collectedAt).getDate();
+    // UTC-safe day extraction
+    const iso = c.collectedAt instanceof Date ? c.collectedAt.toISOString() : String(c.collectedAt);
+    const day = parseInt(iso.slice(8, 10), 10);
     dailyLitres[day] = (dailyLitres[day] || 0) + Number(c.litres);
     totalLitres += Number(c.litres);
   }
@@ -110,7 +126,9 @@ router.get('/statement', async (req, res) => {
   // This handles corrections that were entered as negative amounts
   const advByDay: Record<number, number> = {};
   for (const a of advances) {
-    const day = new Date(a.advanceDate).getDate();
+    // Use UTC date to avoid timezone shifting 5th → 4th etc.
+    const iso = a.advanceDate instanceof Date ? a.advanceDate.toISOString() : String(a.advanceDate);
+    const day = parseInt(iso.slice(8, 10), 10);
     advByDay[day] = (advByDay[day] || 0) + Number(a.amount);
   }
 
@@ -228,7 +246,7 @@ router.get('/statement', async (req, res) => {
 
   res.json({
     farmer: { ...farmer, route: farmer.route },
-    daysInMonth: new Date(y, m, 0).getDate(),
+    daysInMonth,
     isMidMonth: mid,
     paidOn15th: farmer.paidOn15th,
     period: periodLabel,

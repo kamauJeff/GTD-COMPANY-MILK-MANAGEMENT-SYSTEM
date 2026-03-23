@@ -4,6 +4,13 @@ import prisma from '../config/prisma';
 import { AppError } from '../middleware/errorHandler';
 import { sendCollectionSMS } from '../services/sms.service';
 
+
+// UTC-safe day extraction — avoids timezone shifting dates (e.g. 5th → 4th in EAT)
+function utcDay(d: Date | string): number {
+  const iso = d instanceof Date ? d.toISOString() : String(d);
+  return parseInt(iso.slice(8, 10), 10);
+}
+
 export async function getCollections(req: Request, res: Response) {
   const { routeId, farmerId, date, page = '1', limit = '100' } = req.query;
   const where: any = {};
@@ -197,8 +204,8 @@ export async function getJournalGrid(req: Request, res: Response) {
   const m = Number(month) || new Date().getMonth() + 1;
   const y = Number(year) || new Date().getFullYear();
 
-  const start = new Date(y, m - 1, 1);
-  const end   = new Date(y, m, 1);
+  const start = new Date(Date.UTC(y, m - 1, 1));
+  const end   = new Date(Date.UTC(y, m, 1));
 
   const where: any = { collectedAt: { gte: start, lt: end } };
   if (routeId) where.routeId = Number(routeId);
@@ -216,7 +223,7 @@ export async function getJournalGrid(req: Request, res: Response) {
   const farmerMap: Record<number, any> = {};
   for (const c of collections) {
     const fid = c.farmerId;
-    const day = new Date(c.collectedAt).getDate();
+    const day = utcDay(c.collectedAt);
     if (!farmerMap[fid]) {
       farmerMap[fid] = {
         id: fid,
@@ -239,7 +246,7 @@ export async function getJournalGrid(req: Request, res: Response) {
     }
   }
 
-  const daysInMonth = new Date(y, m, 0).getDate();
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
   const farmers = Object.values(farmerMap).sort((a, b) => a.name.localeCompare(b.name));
 
   res.json({
@@ -258,8 +265,8 @@ export async function exportJournalExcel(req: Request, res: Response) {
   const m = Number(month) || new Date().getMonth() + 1;
   const y = Number(year) || new Date().getFullYear();
 
-  const start = new Date(y, m - 1, 1);
-  const end   = new Date(y, m, 1);
+  const start = new Date(Date.UTC(y, m - 1, 1));
+  const end   = new Date(Date.UTC(y, m, 1));
   const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
   const where: any = { collectedAt: { gte: start, lt: end } };
@@ -274,13 +281,13 @@ export async function exportJournalExcel(req: Request, res: Response) {
     orderBy: { collectedAt: 'asc' },
   });
 
-  const daysInMonth = new Date(y, m, 0).getDate();
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
 
   // Build farmer map
   const farmerMap: Record<number, any> = {};
   for (const c of collections) {
     const fid = c.farmerId;
-    const day = new Date(c.collectedAt).getDate();
+    const day = utcDay(c.collectedAt);
     if (!farmerMap[fid]) {
       farmerMap[fid] = { code: c.farmer.code, name: c.farmer.name, route: c.route?.name ?? '', days: {}, total: 0 };
     }
@@ -320,8 +327,8 @@ export async function getJournalGridFull(req: Request, res: Response) {
   const { month, year, routeId } = req.query;
   const m = Number(month) || new Date().getMonth() + 1;
   const y = Number(year)  || new Date().getFullYear();
-  const start = new Date(y, m - 1, 1);
-  const end   = new Date(y, m, 1);
+  const start = new Date(Date.UTC(y, m - 1, 1));
+  const end   = new Date(Date.UTC(y, m, 1));
   const ADVANCE_DATES = [5, 10, 20, 25]; // advance disbursement days (15th is payment day, not advance)
 
   const where: any = { collectedAt: { gte: start, lt: end } };
@@ -346,7 +353,7 @@ export async function getJournalGridFull(req: Request, res: Response) {
   const farmerMap: Record<number, any> = {};
   for (const c of collections) {
     const fid = c.farmerId;
-    const day = new Date(c.collectedAt).getDate();
+    const day = utcDay(c.collectedAt);
     if (!farmerMap[fid]) {
       farmerMap[fid] = {
         id: fid, code: c.farmer.code, name: c.farmer.name,
@@ -364,7 +371,7 @@ export async function getJournalGridFull(req: Request, res: Response) {
   for (const adv of advances) {
     const fid = adv.farmerId;
     if (!farmerMap[fid]) continue;
-    const advDay = new Date(adv.advanceDate).getDate();
+    const advDay = utcDay(adv.advanceDate);
     // Use exact day if it's one of the advance dates, otherwise find nearest
     const exactMatch = ADVANCE_DATES.includes(advDay) ? advDay :
       ADVANCE_DATES.reduce((prev, curr) =>
@@ -432,7 +439,7 @@ export async function getJournalGridFull(req: Request, res: Response) {
   res.json({
     farmers,
     dayTotals,
-    daysInMonth: new Date(y, m, 0).getDate(),
+    daysInMonth: new Date(Date.UTC(y, m, 0)).getUTCDate(),
     month: m, year: y,
     grandTotal: farmers.reduce((s, f) => s + f.total, 0),
     grandMoney: farmers.reduce((s, f) => s + f.totalMoney, 0),

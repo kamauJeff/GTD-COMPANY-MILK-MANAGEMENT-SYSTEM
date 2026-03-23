@@ -16,7 +16,7 @@ export default function HistoryScreen({ employee, onBack }: Props) {
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing]       = useState(false);
-  const [showStatement, setShowStatement] = useState<{ farmerCode: string; month: number; year: number } | null>(null);
+  const [showStatement, setShowStatement] = useState<{ farmerCode: string; farmerId?: number; month: number; year: number } | null>(null);
   const now = new Date();
 
   const load = useCallback(async () => {
@@ -52,6 +52,7 @@ export default function HistoryScreen({ employee, onBack }: Props) {
       {showStatement && (
         <FarmerStatementScreen
           farmerCode={showStatement.farmerCode}
+          farmerId={showStatement.farmerId}
           month={showStatement.month}
           year={showStatement.year}
           onClose={() => setShowStatement(null)}
@@ -114,7 +115,7 @@ export default function HistoryScreen({ employee, onBack }: Props) {
                 <Text style={s.groupLabel}>⏳ PENDING SYNC ({pendingRows.length})</Text>
                 {pendingRows.map(r => (
                   <RecordRow key={r.id} record={r}
-                    onStatement={(code: string) => setShowStatement({ farmerCode: code, month: now.getMonth()+1, year: now.getFullYear() })} />
+                    onStatement={(code: string, id?: number) => setShowStatement({ farmerCode: code, farmerId: id, month: now.getMonth()+1, year: now.getFullYear() })} />
                 ))}
               </>
             )}
@@ -124,7 +125,7 @@ export default function HistoryScreen({ employee, onBack }: Props) {
                 <Text style={[s.groupLabel, { marginTop: 16 }]}>✓ SYNCED ({syncedRows.length})</Text>
                 {syncedRows.map(r => (
                   <RecordRow key={r.id} record={r} synced
-                    onStatement={(code: string) => setShowStatement({ farmerCode: code, month: now.getMonth()+1, year: now.getFullYear() })} />
+                    onStatement={(code: string, id?: number) => setShowStatement({ farmerCode: code, farmerId: id, month: now.getMonth()+1, year: now.getFullYear() })} />
                 ))}
               </>
             )}

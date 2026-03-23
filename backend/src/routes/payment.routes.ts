@@ -15,17 +15,17 @@ router.use(authenticate);
 
 function getDateRanges(month: number, year: number) {
   return {
-    midStart:  new Date(year, month - 1, 1),
-    midEnd:    new Date(year, month - 1, 16),  // exclusive → days 1-15
-    endStart:  new Date(year, month - 1, 16),
-    fullEnd:   new Date(year, month, 1),        // exclusive → full month
+    midStart:  new Date(Date.UTC(year, month - 1, 1)),
+    midEnd:    new Date(Date.UTC(year, month - 1, 16)),  // exclusive → days 1-15
+    endStart:  new Date(Date.UTC(year, month - 1, 16)),
+    fullEnd:   new Date(Date.UTC(year, month, 1)),        // exclusive → full month
   };
 }
 
 // Legacy helper kept for backward compat
 function periodDates(month: number, year: number, isMidMonth: boolean) {
-  if (isMidMonth) return { start: new Date(year, month - 1, 1), end: new Date(year, month - 1, 16) };
-  return { start: new Date(year, month - 1, 1), end: new Date(year, month, 1) };
+  if (isMidMonth) return { start: new Date(Date.UTC(year, month - 1, 1)), end: new Date(Date.UTC(year, month - 1, 16)) };
+  return { start: new Date(Date.UTC(year, month - 1, 1)), end: new Date(Date.UTC(year, month, 1)) };
 }
 
 async function computeFarmerPayment(farmerId: number, month: number, year: number, isMidMonth: boolean) {

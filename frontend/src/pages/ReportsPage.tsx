@@ -486,23 +486,38 @@ function PaymentReport({ payments, allPayments, loading, label, month, year, isM
               </div>
             </div>
             {/* Breakdown */}
-            <div className="p-5 space-y-1">
+            <div className="p-5 space-y-1 overflow-y-auto max-h-[70vh]">
               <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Payment Breakdown</div>
 
-              {/* Litres & Gross */}
+              {/* Period label */}
+              {drillData && (
+                <div className="px-3 py-2 bg-green-50 dark:bg-green-900/20 rounded-lg text-xs text-green-700 dark:text-green-400 font-medium mb-3">
+                  📅 {drillData.period}
+                </div>
+              )}
+
+              {/* Litres & Gross — use statement data for correct period litres */}
               <div className="flex justify-between py-2 border-b border-gray-100 dark:border-gray-700">
                 <span className="text-sm text-gray-600 dark:text-gray-300">Rate per Litre</span>
                 <span className="font-mono text-sm">KES {Number(drillFarmer.pricePerLitre || drillFarmer.farmer?.pricePerLitre || 0).toLocaleString()}/L</span>
               </div>
               <div className="flex justify-between py-2 border-b border-gray-100 dark:border-gray-700">
                 <span className="text-sm text-gray-600 dark:text-gray-300">
-                  Total Litres {drillFarmer.farmer?.paidOn15th ? (isMid ? '(1–15)' : '(16–end)') : '(1–end)'}
+                  Total Litres
+                  <span className="ml-1 text-xs text-gray-400">
+                    {drillLoading ? '(loading...)' : drillData ? `(${drillData.period})` : drillFarmer.farmer?.paidOn15th ? (isMid ? '(1–15)' : '(16–end)') : '(1–end)'}
+                  </span>
                 </span>
-                <span className="font-mono text-sm font-bold">{Number(drillFarmer.totalLitres || 0).toFixed(1)} L</span>
+                <span className="font-mono text-sm font-bold">
+                  {/* Use statement totalLitres (correct period) if available, else payment record */}
+                  {Number(drillData?.totalLitres ?? drillFarmer.totalLitres ?? 0).toFixed(1)} L
+                </span>
               </div>
               <div className="flex justify-between py-2 border-b border-gray-100 dark:border-gray-700">
                 <span className="text-sm text-gray-600 dark:text-gray-300">Gross Pay</span>
-                <span className="font-mono text-sm font-bold text-blue-600">KES {Number(drillFarmer.grossPay).toLocaleString()}</span>
+                <span className="font-mono text-sm font-bold text-blue-600">
+                  KES {Number(drillData?.grossPay ?? drillFarmer.grossPay).toLocaleString()}
+                </span>
               </div>
 
               {/* Deductions — use statement data if available for full line-item breakdown */}
@@ -548,10 +563,10 @@ function PaymentReport({ payments, allPayments, loading, label, month, year, isM
               </div>
 
               {/* Net */}
-              <div className={`flex justify-between py-3 px-3 rounded-xl mt-2 ${Number(drillFarmer.netPay) >= 0 ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'}`}>
+              <div className={`flex justify-between py-3 px-3 rounded-xl mt-2 ${Number(drillData?.netPay ?? drillFarmer.netPay) >= 0 ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'}`}>
                 <span className="font-bold text-base">NET PAY</span>
-                <span className={`font-mono font-bold text-lg ${Number(drillFarmer.netPay) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600'}`}>
-                  KES {Number(drillFarmer.netPay).toLocaleString()}
+                <span className={`font-mono font-bold text-lg ${Number(drillData?.netPay ?? drillFarmer.netPay) >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600'}`}>
+                  KES {Number(drillData?.netPay ?? drillFarmer.netPay).toLocaleString()}
                 </span>
               </div>
 

@@ -429,8 +429,26 @@ router.post('/advance', authorize('ADMIN', 'OFFICE'), async (req, res) => {
     if (!farmer) throw new AppError(404, `Farmer ${farmerCode} not found`);
     fId = farmer.id;
   }
+
+  // Normalize date to UTC noon of the intended day to prevent timezone shifting
+  // e.g. "2026-03-05" or "2026-03-05T00:00:00+03:00" both → 2026-03-05T12:00:00.000Z
+  let advanceDate: Date;
+  if (date) {
+    const dateStr = String(date);
+    // Extract YYYY-MM-DD from any format
+    const match = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (match) {
+      advanceDate = new Date(Date.UTC(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]), 12, 0, 0));
+    } else {
+      advanceDate = new Date(date);
+    }
+  } else {
+    const now = new Date();
+    advanceDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12, 0, 0));
+  }
+
   const advance = await prisma.farmerAdvance.create({
-    data: { farmerId: Number(fId), amount: Number(amount), advanceDate: date ? new Date(date) : new Date(), notes: notes || null },
+    data: { farmerId: Number(fId), amount: Number(amount), advanceDate, notes: notes || null },
     include: { farmer: { select: { code: true, name: true } } },
   });
   res.status(201).json(advance);

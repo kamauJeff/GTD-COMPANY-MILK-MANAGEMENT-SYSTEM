@@ -171,14 +171,38 @@ router.get('/statement', async (req, res) => {
     else if (prevNeg) bfBalance = Math.abs(Number(prevNeg.netPay));
 
   } else if (farmer.paidOn15th) {
-    // End-month for paidOn15th: b/f ONLY if mid-month was negative (missed payment)
-    // If mid was paid normally → b/f = 0 (already deducted at mid)
+    // End-month for paidOn15th:
+    // - If mid-month PAYMENT RECORD exists and was negative → b/f = |midNetPay|
+    // - If mid-month PAYMENT RECORD exists and was positive → b/f = 0 (already deducted)
+    // - If NO mid-month payment record → compute mid-month net from raw data
+    //   to determine if farmer would have been negative
+
     const midPayment = await prisma.farmerPayment.findFirst({
       where: { farmerId: farmer.id, periodMonth: m, periodYear: y, isMidMonth: true },
-      select: { netPay: true },
+      select: { netPay: true, status: true },
     });
-    if (!midPayment) {
-      // Never paid mid → treat as full month, include b/f
+
+    if (midPayment && Number(midPayment.netPay) > 0) {
+      // Mid was paid/approved positive → b/f = 0 for end-month ✓
+      bfBalance = 0;
+    } else if (midPayment && Number(midPayment.netPay) <= 0) {
+      // Mid payment exists but was negative → carry forward
+      bfBalance = Math.abs(Number(midPayment.netPay));
+    } else {
+      // No mid payment record yet — compute from raw collections + advances
+      const [midCollRaw, midAdvRaw] = await Promise.all([
+        prisma.milkCollection.aggregate({
+          where: { farmerId: farmer.id, collectedAt: { gte: midStart, lt: midEnd } },
+          _sum: { litres: true },
+        }),
+        prisma.farmerAdvance.aggregate({
+          where: { farmerId: farmer.id, advanceDate: { gte: midStart, lt: midEnd } },
+          _sum: { amount: true },
+        }),
+      ]);
+      const midGross = Number(midCollRaw._sum.litres || 0) * Number(farmer.pricePerLitre);
+      const midAdv   = Number(midAdvRaw._sum.amount || 0);
+      // Also include prev b/f in mid calculation
       const [bfCorr, prevNeg] = await Promise.all([
         prisma.farmerDeduction.findFirst({
           where: { farmerId: farmer.id, periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
@@ -188,13 +212,14 @@ router.get('/statement', async (req, res) => {
           where: { farmerId: farmer.id, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
         }),
       ]);
-      if (bfCorr) bfBalance = Number(bfCorr.amount);
-      else if (prevNeg) bfBalance = Math.abs(Number(prevNeg.netPay));
-    } else if (Number(midPayment.netPay) < 0) {
-      // Mid was negative → carry that forward as b/f
-      bfBalance = Math.abs(Number(midPayment.netPay));
+      const prevBf   = bfCorr ? Number(bfCorr.amount) : (prevNeg ? Math.abs(Number(prevNeg.netPay)) : 0);
+      const midNet   = midGross - midAdv - prevBf;
+      if (midNet < 0) {
+        // Mid would have been negative → carry that forward
+        bfBalance = Math.abs(midNet);
+      }
+      // else: mid would have been positive or zero → b/f = 0 for end-month
     }
-    // else: mid was positive → b/f = 0, already deducted ✓
 
   } else {
     // Full-month farmer: check office correction first, then prev end-month negative

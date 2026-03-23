@@ -28,6 +28,7 @@ import reportRoutes from './routes/report.routes';
 import webhookRoutes from './routes/webhook.routes';
 import farmerPortalRoutes from './routes/farmerPortal.routes';
 import aiRoutes from './routes/ai.routes';
+import dashboardRoutes from './routes/dashboard.routes';
 import litresRoutes from './routes/litres.routes';
 import driverRoutes from './routes/driver.routes';
 
@@ -72,6 +73,7 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/farmer-portal', farmerPortalRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/factory', litresRoutes);
 app.use('/api/drivers', driverRoutes);
 

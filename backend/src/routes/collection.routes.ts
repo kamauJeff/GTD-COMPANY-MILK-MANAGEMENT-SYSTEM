@@ -19,20 +19,28 @@ export default router;
 
 // Farmer monthly statement
 router.get('/statement', async (req, res) => {
-  const { farmerCode, month, year, isMidMonth } = req.query;
+  const { farmerCode, farmerId, month, year, isMidMonth } = req.query;
   const m = Number(month); const y = Number(year);
   const mid = isMidMonth === 'true';
+
+  const searchStr = String(farmerCode || '').trim();
 
   const farmer = await prisma.farmer.findFirst({
     where: {
       OR: [
-        { code: String(farmerCode).toUpperCase() },
-        { name: { contains: String(farmerCode), mode: 'insensitive' } },
+        ...(farmerId ? [{ id: Number(farmerId) }] : []),
+        ...(searchStr ? [
+          { code: searchStr.toUpperCase() },
+          { code: { contains: searchStr.toUpperCase() } },
+          { name: { contains: searchStr, mode: 'insensitive' as const } },
+        ] : []),
       ]
     },
     include: { route: { select: { name: true } } },
   });
-  if (!farmer) return res.status(404).json({ error: 'Farmer not found' });
+  if (!farmer) return res.status(404).json({
+    error: `Farmer not found: "${searchStr}". Try syncing the mobile app to download the latest farmer list.`,
+  });
 
   // ── Determine correct date range based on farmer type and period ─────────────
   // Mid-month request:  always 1–15 (regardless of farmer type)
@@ -174,19 +182,33 @@ router.get('/statement', async (req, res) => {
   }
 
   // ── Other deductions (AI charges, water, etc.) — EXCLUDE b/f entries ──────────
-  const otherDeductions = deductions
-    .filter(d => !d.reason.toLowerCase().includes('b/f'))
-    .reduce((s, d) => s + Number(d.amount), 0);
+  // Also exclude any FarmerDeduction entries whose reason mentions "advance" to avoid
+  // double-counting with the FarmerAdvance records above
+  const otherDeductionsList = deductions.filter(d => {
+    const r = d.reason.toLowerCase();
+    return !r.includes('b/f') && !r.includes('advance');
+  });
+  const otherDeductions = otherDeductionsList.reduce((s, d) => s + Number(d.amount), 0);
 
-  // ── Build ordered deductions list for display ─────────────────────────────────
+  // ── Build clean ordered deductions list for display ───────────────────────────
+  // Order: 1) B/f  2) Advances (from FarmerAdvance, each individually)  3) Other charges
+  const seen = new Set<string>(); // deduplicate by label+amount
   const deductionsList: { label: string; amount: number }[] = [];
-  // 1. B/f first
-  if (bfBalance > 0) deductionsList.push({ label: 'Balance b/f', amount: bfBalance });
-  // 2. Each advance individually — label already contains "Advance — Nth Mon" from ordinal()
-  for (const adv of advancesOrdered) deductionsList.push({ label: adv.label, amount: adv.amount });
-  // 3. Other charges (AI insemination, water etc.) — exclude b/f and exclude any that duplicate advance amounts
-  for (const d of deductions.filter(x => !x.reason.toLowerCase().includes('b/f'))) {
-    deductionsList.push({ label: d.reason, amount: Number(d.amount) });
+
+  // 1. B/f
+  if (bfBalance > 0) {
+    const key = `bf:${bfBalance}`;
+    if (!seen.has(key)) { seen.add(key); deductionsList.push({ label: 'Balance b/f', amount: bfBalance }); }
+  }
+  // 2. Advances from FarmerAdvance table (authoritative source)
+  for (const adv of advancesOrdered) {
+    const key = `adv:${adv.day}:${adv.amount}`;
+    if (!seen.has(key)) { seen.add(key); deductionsList.push({ label: adv.label, amount: adv.amount }); }
+  }
+  // 3. Other charges from FarmerDeduction table (no b/f, no advances)
+  for (const d of otherDeductionsList) {
+    const key = `ded:${d.reason}:${d.amount}`;
+    if (!seen.has(key)) { seen.add(key); deductionsList.push({ label: d.reason, amount: Number(d.amount) }); }
   }
 
   const totalDeductions = totalAdvances + bfBalance + otherDeductions;

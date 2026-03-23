@@ -374,18 +374,22 @@ router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
 
     if (records.length === 0) return res.json({ created: 0, message: 'No collections found for this period' });
 
-    // ── Upsert in batches of 50 (smaller = more stable on free DB) ───────────
-    let created = 0;
-    const BATCH = 50;
-    for (let i = 0; i < records.length; i += BATCH) {
-      const batch = records.slice(i, i + BATCH);
-      await Promise.all(batch.map(r => prisma.farmerPayment.upsert({
-        where: { farmerId_periodMonth_periodYear_isMidMonth: { farmerId: r.farmerId, periodMonth: r.periodMonth, periodYear: r.periodYear, isMidMonth: r.isMidMonth } },
-        update: { grossPay: r.grossPay, totalAdvances: r.totalAdvances, totalDeductions: r.totalDeductions, netPay: r.netPay, status: 'PENDING' },
-        create: r,
-      })));
-      created += batch.length;
-    }
+    // ── Upsert sequentially to avoid Supabase session-mode connection exhaustion ──
+    // We use createMany (skipDuplicates) + updateMany in 2 queries instead of N upserts
+    // 1. Delete existing PENDING records for this period (safe to regenerate)
+    await prisma.farmerPayment.deleteMany({
+      where: {
+        farmerId: { in: records.map(r => r.farmerId) },
+        periodMonth: m, periodYear: y, isMidMonth: mid,
+        status: 'PENDING',  // only delete PENDING, never touch APPROVED/PAID
+      },
+    });
+    // 2. Create all new records in one batch
+    await prisma.farmerPayment.createMany({
+      data: records,
+      skipDuplicates: true,  // skip if APPROVED/PAID already exists for this farmer+period
+    });
+    const created = records.length;
     res.json({ created, message: `Generated ${created} payment records` });
 
   } catch (err: any) {

@@ -33,6 +33,7 @@ export default function FarmersPage() {
   const { data: farmerDetail } = useQuery({
     queryKey: ['farmer', selected?.id],
     queryFn: () => farmersApi.get(selected.id),
+    staleTime: 0,
     enabled: !!selected?.id,
   });
   const detail = farmerDetail?.data;
@@ -41,6 +42,7 @@ export default function FarmersPage() {
   const { data: collectionsData } = useQuery({
     queryKey: ['farmer-collections', selected?.id],
     queryFn: () => collectionsApi.journal({ farmerId: selected.id, months: 3 }),
+    staleTime: 0,
     enabled: !!selected?.id && panelTab === 'collections',
   });
 
@@ -48,6 +50,7 @@ export default function FarmersPage() {
   const { data: paymentsData } = useQuery({
     queryKey: ['farmer-payments', selected?.id],
     queryFn: () => paymentsApi.list({ farmerId: selected.id }),
+    staleTime: 0,
     enabled: !!selected?.id && panelTab === 'payments',
   });
   const farmerPayments: any[] = paymentsData?.data?.payments ?? paymentsData?.data ?? [];
@@ -69,7 +72,13 @@ export default function FarmersPage() {
     onSuccess: () => {
       setShowAddFarmer(false);
       setAddForm({ code:'',name:'',phone:'',idNumber:'',routeId:'',paymentMethod:'MPESA',mpesaPhone:'',bankName:'',bankAccount:'',pricePerLitre:'46',paidOn15th:false });
+      // Invalidate everywhere new farmer needs to appear
       qc.invalidateQueries({ queryKey: ['farmers'] });
+      qc.invalidateQueries({ queryKey: ['farmers-bulk'] });
+      qc.invalidateQueries({ queryKey: ['advances-page'] });
+      qc.invalidateQueries({ queryKey: ['collection-journal'] });
+      qc.invalidateQueries({ queryKey: ['stmt-search'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
     },
     onError: (e: any) => showError(e?.response?.data?.error || 'Failed to add farmer'),
   });
@@ -79,8 +88,16 @@ export default function FarmersPage() {
     onSuccess: (res) => {
       setSelected(res.data);
       setEditing(false);
+      // Invalidate everywhere farmer data is used
       qc.invalidateQueries({ queryKey: ['farmers'] });
       qc.invalidateQueries({ queryKey: ['farmer', selected.id] });
+      qc.invalidateQueries({ queryKey: ['farmers-bulk'] });
+      qc.invalidateQueries({ queryKey: ['payments-preview'] });
+      qc.invalidateQueries({ queryKey: ['payments-records'] });
+      qc.invalidateQueries({ queryKey: ['collection-journal'] });
+      qc.invalidateQueries({ queryKey: ['advances-page'] });
+      qc.invalidateQueries({ queryKey: ['disburse-approved'] });
+      qc.invalidateQueries({ queryKey: ['stmt-search'] });
     },
     onError: (e: any) => showError(e?.response?.data?.error || 'Update failed'),
   });
@@ -134,6 +151,7 @@ export default function FarmersPage() {
   const { data: priceSummaryData, refetch: refetchPrices } = useQuery({
     queryKey: ['price-summary'],
     queryFn: () => api.get('/api/farmers/price-summary'),
+    staleTime: 0,
     enabled: showPriceManager,
   });
   const priceSummary = priceSummaryData?.data?.summary ?? [];

@@ -19,6 +19,8 @@ export default function AdvancesPage() {
   const [form, setForm] = useState({
     farmerCode: '', amount: '', advanceDate: ADVANCE_DATES[0].toString(), notes: ''
   });
+  const [farmerSearch, setFarmerSearch] = useState('');
+  const [selectedFarmer, setSelectedFarmer] = useState<any>(null);
 
   // Bulk: routeId + advanceDate → list of farmers with amount inputs
   const [bulkDate, setBulkDate]     = useState(ADVANCE_DATES[0]);
@@ -28,6 +30,15 @@ export default function AdvancesPage() {
 
   const { data: routesData } = useQuery({ queryKey: ['routes'], queryFn: () => api.get('/api/routes') });
   const routes: any[] = routesData?.data ?? [];
+
+  // Live farmer search for single-entry form
+  const { data: farmerSuggestData } = useQuery({
+    queryKey: ['farmer-suggest', farmerSearch],
+    queryFn: () => api.get('/api/farmers', { params: { search: farmerSearch, limit: 8, isActive: true } }),
+    enabled: farmerSearch.length >= 1 && !selectedFarmer,
+    staleTime: 0,
+  });
+  const farmerSuggestions: any[] = farmerSuggestData?.data?.data ?? [];
 
   // Load advances for this period
   const { data: advancesData, isLoading } = useQuery({
@@ -42,6 +53,7 @@ export default function AdvancesPage() {
   const { data: farmersData } = useQuery({
     queryKey: ['farmers-bulk', routeId],
     queryFn: () => api.get('/api/farmers', { params: { routeId: Number(routeId), limit: 200, isActive: true } }),
+    staleTime: 0,
     enabled: bulkMode && !!routeId,
   });
   const bulkFarmers: any[] = farmersData?.data?.data ?? farmersData?.data ?? [];
@@ -60,6 +72,8 @@ export default function AdvancesPage() {
       showSuccess(`Advance recorded — ${r.data.farmer?.name}`);
       qc.invalidateQueries({ queryKey: ['advances-page'] });
       setForm(f => ({ ...f, farmerCode: '', amount: '' }));
+      setFarmerSearch('');
+      setSelectedFarmer(null);
     },
     onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
   });
@@ -136,10 +150,29 @@ export default function AdvancesPage() {
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 mb-4 shadow-sm">
           <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-4">Record Advance</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div>
-              <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Farmer Code *</label>
-              <input value={form.farmerCode} onChange={e => setForm(f => ({...f, farmerCode: e.target.value.toUpperCase()}))}
-                placeholder="FM0001" className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100" />
+            <div className="relative">
+              <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Farmer Name or Code *</label>
+              <input value={farmerSearch}
+                onChange={e => { setFarmerSearch(e.target.value); setSelectedFarmer(null); setForm(f => ({...f, farmerCode: e.target.value.toUpperCase()})); }}
+                placeholder="Search by name or code..."
+                className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-100" />
+              {selectedFarmer && (
+                <div className="mt-1 text-xs text-green-600 dark:text-green-400 font-medium">
+                  ✓ {selectedFarmer.name} · {selectedFarmer.code} · {selectedFarmer.route?.name}
+                </div>
+              )}
+              {farmerSuggestions.length > 0 && !selectedFarmer && (
+                <div className="absolute z-30 left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-lg overflow-hidden">
+                  {farmerSuggestions.map((f: any) => (
+                    <button key={f.id} type="button"
+                      onClick={() => { setSelectedFarmer(f); setFarmerSearch(f.name); setForm(frm => ({...frm, farmerCode: f.code})); }}
+                      className="w-full text-left px-3 py-2 hover:bg-green-50 dark:hover:bg-green-900/20 border-b last:border-0 dark:border-gray-700 text-sm">
+                      <span className="font-medium dark:text-gray-100">{f.name}</span>
+                      <span className="ml-2 text-xs text-gray-400">{f.code} · {f.route?.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div>
               <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Amount (KES) *</label>

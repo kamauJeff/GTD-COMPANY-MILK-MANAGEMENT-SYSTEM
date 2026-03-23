@@ -216,24 +216,50 @@ export default function StatementPage() {
             </div>
           </div>
 
-          {/* Daily collections grid */}
+          {/* Daily collections — compact table, groups days in rows of 8 */}
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 mb-4">
             <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Daily Collections</div>
-            <div className="flex flex-wrap gap-1.5">
-              {Array.from({ length: stmt.daysInMonth }, (_, i) => {
-                const day = i + 1;
-                const litres = stmt.dailyLitres[day];
-                const inPeriod = isMid ? day <= 15 : stmt.farmer.paidOn15th ? day >= 16 : true;
-                return (
-                  <div key={day} className={`w-12 text-center py-1.5 rounded-lg border text-xs
-                    ${!inPeriod ? 'bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-300' :
-                      litres > 0 ? 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700 text-green-800 dark:text-green-300 font-bold' :
-                      'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400'}`}>
-                    <div className="text-gray-400 text-[10px]">{ordinal(day)}</div>
-                    <div>{litres ? litres.toFixed(1) : '—'}</div>
-                  </div>
-                );
-              })}
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="bg-gray-50 dark:bg-gray-800">
+                  {Array.from({ length: 8 }, (_, i) => (
+                    <th key={i} className="border border-gray-200 dark:border-gray-700 px-1 py-1 text-gray-500 font-medium w-[12.5%]">Day</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: Math.ceil(stmt.daysInMonth / 8) }, (_, rowIdx) => {
+                  const startDay = rowIdx * 8 + 1;
+                  const cells = Array.from({ length: 8 }, (_, ci) => startDay + ci);
+                  return (
+                    <tr key={rowIdx}>
+                      {cells.map(day => {
+                        if (day > stmt.daysInMonth) return <td key={day} className="border border-gray-100 dark:border-gray-800 p-1" />;
+                        const litres = stmt.dailyLitres[day];
+                        const inPeriod = isMid ? day <= 15 : stmt.farmer.paidOn15th ? day >= 16 : true;
+                        return (
+                          <td key={day} className={`border px-1 py-1 text-center
+                            ${!inPeriod ? 'bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-300' :
+                              litres > 0 ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 font-bold text-green-800 dark:text-green-300' :
+                              'border-gray-200 dark:border-gray-700 text-gray-300'}`}>
+                            <div className="text-gray-400 text-[9px]">{ordinal(day)}</div>
+                            <div className="font-mono">{litres ? litres.toFixed(1) : '–'}</div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {/* Inline total row */}
+            <div className="mt-3 flex justify-between items-center px-1">
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                Days with milk: {Object.values(stmt.dailyLitres).filter((v: any) => v > 0).length}
+              </span>
+              <span className="font-mono font-bold text-sm text-green-700 dark:text-green-400">
+                Total: {Number(stmt.totalLitres).toFixed(1)} L
+              </span>
             </div>
           </div>
 

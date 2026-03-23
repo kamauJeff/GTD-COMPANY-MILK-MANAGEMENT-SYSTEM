@@ -6,12 +6,13 @@ import { farmersApi, collectionsApi } from '../api/client';
 
 interface Props {
   farmerCode: string;
+  farmerId?: number;
   month: number;
   year: number;
   onClose: () => void;
 }
 
-export default function FarmerStatementScreen({ farmerCode, month, year, onClose }: Props) {
+export default function FarmerStatementScreen({ farmerCode, farmerId, month, year, onClose }: Props) {
   const [loading, setLoading]     = useState(true);
   const [data, setData]           = useState<any>(null);
   const [error, setError]         = useState<string>('');
@@ -24,7 +25,7 @@ export default function FarmerStatementScreen({ farmerCode, month, year, onClose
     setLoading(true);
     setError('');
     try {
-      const res = await farmersApi.statement({ farmerCode, month, year, isMidMonth });
+      const res = await farmersApi.statement({ farmerCode, farmerId, month, year, isMidMonth });
       if (res.data?.error) {
         setError(res.data.error);
       } else {

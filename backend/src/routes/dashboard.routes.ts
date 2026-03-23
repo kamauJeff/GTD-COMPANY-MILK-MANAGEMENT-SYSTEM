@@ -121,7 +121,6 @@ router.get('/', async (req, res) => {
 
     // ── Route reporting status ────────────────────────────────────────────────
     const allRoutes = await prisma.route.findMany({
-      where: { isActive: true },
       select: { id: true, code: true, name: true },
     });
     const reportedRouteIds = new Set(todayCollections.map(c => c.routeId).filter(Boolean));

@@ -1,8 +1,13 @@
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { collectionsApi, routesApi, api } from '../api/client';
-import { showSuccess, showError } from '../components/Toast';
-import { Download, Plus, Edit3, Trash2, X, AlertTriangle } from 'lucide-react';
+import { RefreshCw,
+ useState } from 'react';
+import { RefreshCw,
+ useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { RefreshCw,
+ collectionsApi, routesApi, api } from '../api/client';
+import { RefreshCw,
+ showSuccess, showError } from '../components/Toast';
+import { RefreshCw,
+ Download, Plus, Edit3, Trash2, X, AlertTriangle, RefreshCw } from 'lucide-react';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -13,6 +18,13 @@ export default function CollectionsPage() {
   const [routeId, setRouteId] = useState('');
   const [search, setSearch]   = useState('');
   const [showCorrections, setShowCorrections] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await refetchJournal();
+    setRefreshing(false);
+  }
   const [correctionTab, setCorrectionTab] = useState<'manual'|'correct'|'advance'>('manual');
   const [manualForm, setManualForm] = useState({ farmerCode: '', litres: '', collectedAt: now.toISOString().split('T')[0], routeId: '' });
   const [correctForm, setCorrectForm] = useState({ id: '', litres: '', collectedAt: '' });
@@ -68,9 +80,10 @@ export default function CollectionsPage() {
   });
 
 
-  const { data: gridData, isLoading } = useQuery({
+  const { data: gridData, isLoading, refetch: refetchJournal } = useQuery({
     queryKey: ['collection-journal', month, year, routeId],
     queryFn: () => collectionsApi.journalFull({ month, year, routeId: routeId || undefined }),
+    staleTime: 0, refetchOnMount: true,
   });
 
   const grid        = gridData?.data;
@@ -122,6 +135,11 @@ export default function CollectionsPage() {
           <h1 className="text-xl md:text-2xl font-bold text-gray-800">Milk Collections Journal</h1>
           <p className="text-sm text-gray-500">{MONTHS[month-1]} {year} · {filtered.length} farmers · {getGrandTotal().toFixed(1)} L</p>
         </div>
+        <button onClick={handleRefresh} disabled={refreshing}
+          className="flex items-center gap-2 px-3 py-2 border border-green-300 text-green-600 dark:text-green-400 rounded-lg text-sm hover:bg-green-50 dark:hover:bg-green-900/20">
+          <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+          {refreshing ? 'Refreshing...' : 'Refresh'}
+        </button>
         <button onClick={() => setShowCorrections(true)}
           className="flex items-center gap-2 px-3 py-2 border border-orange-300 text-orange-600 dark:text-orange-400 rounded-lg text-sm hover:bg-orange-50 dark:hover:bg-orange-900/20">
           <Edit3 size={14} /> Corrections

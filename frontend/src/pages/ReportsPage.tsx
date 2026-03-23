@@ -347,13 +347,13 @@ export default function ReportsPage() {
         {/* ── MID MONTH PAYMENTS ── */}
         {tab === 'payment-mid' && (
           <PaymentReport payments={midPayments} allPayments={allMidPayments} loading={midLoading}
-            label="Mid Month" month={month} year={year} payFilter={payFilter} payFilterLabel={payFilterLabel} statusBadge={statusBadge} />
+            label="Mid Month" month={month} year={year} isMid={true} payFilter={payFilter} payFilterLabel={payFilterLabel} statusBadge={statusBadge} />
         )}
 
         {/* ── END MONTH PAYMENTS ── */}
         {tab === 'payment-end' && (
           <PaymentReport payments={endPayments} allPayments={allEndPayments} loading={endLoading}
-            label="End Month" month={month} year={year} payFilter={payFilter} payFilterLabel={payFilterLabel} statusBadge={statusBadge} />
+            label="End Month" month={month} year={year} isMid={false} payFilter={payFilter} payFilterLabel={payFilterLabel} statusBadge={statusBadge} />
         )}
 
         {/* ── SHOPS PERFORMANCE ── */}
@@ -495,7 +495,9 @@ function PaymentReport({ payments, allPayments, loading, label, month, year, isM
                 <span className="font-mono text-sm">KES {Number(drillFarmer.pricePerLitre || drillFarmer.farmer?.pricePerLitre || 0).toLocaleString()}/L</span>
               </div>
               <div className="flex justify-between py-2 border-b border-gray-100 dark:border-gray-700">
-                <span className="text-sm text-gray-600 dark:text-gray-300">Total Litres</span>
+                <span className="text-sm text-gray-600 dark:text-gray-300">
+                  Total Litres {drillFarmer.farmer?.paidOn15th ? (isMid ? '(1–15)' : '(16–end)') : '(1–end)'}
+                </span>
                 <span className="font-mono text-sm font-bold">{Number(drillFarmer.totalLitres || 0).toFixed(1)} L</span>
               </div>
               <div className="flex justify-between py-2 border-b border-gray-100 dark:border-gray-700">
@@ -503,29 +505,43 @@ function PaymentReport({ payments, allPayments, loading, label, month, year, isM
                 <span className="font-mono text-sm font-bold text-blue-600">KES {Number(drillFarmer.grossPay).toLocaleString()}</span>
               </div>
 
-              {/* Deductions */}
+              {/* Deductions — use statement data if available for full line-item breakdown */}
               <div className="text-xs font-bold text-gray-400 uppercase tracking-widest pt-3 pb-1">Deductions</div>
-              {Number(drillFarmer.carriedForward) > 0 && (
-                <div className="flex justify-between py-1.5 pl-2">
-                  <span className="text-sm text-gray-500 dark:text-gray-400">Balance b/f</span>
-                  <span className="font-mono text-sm text-red-500">- KES {Number(drillFarmer.carriedForward).toLocaleString()}</span>
-                </div>
+              {drillLoading && <div className="text-xs text-gray-400 animate-pulse py-1">Loading full breakdown...</div>}
+              {drillData ? (
+                <>
+                  {drillData.deductionsList?.map((d: any, i: number) => (
+                    <div key={i} className="flex justify-between py-1.5 pl-2">
+                      <span className="text-sm text-gray-500 dark:text-gray-400">{d.label}</span>
+                      <span className="font-mono text-sm text-red-500">- KES {Number(d.amount).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <>
+                  {Number(drillFarmer.carriedForward) > 0 && (
+                    <div className="flex justify-between py-1.5 pl-2">
+                      <span className="text-sm text-gray-500 dark:text-gray-400">Balance b/f</span>
+                      <span className="font-mono text-sm text-red-500">- KES {Number(drillFarmer.carriedForward).toLocaleString()}</span>
+                    </div>
+                  )}
+                  {Number(drillFarmer.totalAdvances) > 0 && (
+                    <div className="flex justify-between py-1.5 pl-2">
+                      <span className="text-sm text-gray-500 dark:text-gray-400">Advances</span>
+                      <span className="font-mono text-sm text-orange-600">- KES {Number(drillFarmer.totalAdvances).toLocaleString()}</span>
+                    </div>
+                  )}
+                  {(() => {
+                    const other = Number(drillFarmer.totalDeductions) - Number(drillFarmer.totalAdvances) - Number(drillFarmer.carriedForward || 0);
+                    return other > 0 ? (
+                      <div className="flex justify-between py-1.5 pl-2">
+                        <span className="text-sm text-gray-500 dark:text-gray-400">Other charges</span>
+                        <span className="font-mono text-sm text-red-500">- KES {other.toLocaleString()}</span>
+                      </div>
+                    ) : null;
+                  })()}
+                </>
               )}
-              {Number(drillFarmer.totalAdvances) > 0 && (
-                <div className="flex justify-between py-1.5 pl-2">
-                  <span className="text-sm text-gray-500 dark:text-gray-400">Advances</span>
-                  <span className="font-mono text-sm text-orange-600">- KES {Number(drillFarmer.totalAdvances).toLocaleString()}</span>
-                </div>
-              )}
-              {(() => {
-                const other = Number(drillFarmer.totalDeductions) - Number(drillFarmer.totalAdvances) - Number(drillFarmer.carriedForward || 0);
-                return other > 0 ? (
-                  <div className="flex justify-between py-1.5 pl-2">
-                    <span className="text-sm text-gray-500 dark:text-gray-400">Other charges</span>
-                    <span className="font-mono text-sm text-red-500">- KES {other.toLocaleString()}</span>
-                  </div>
-                ) : null;
-              })()}
               <div className="flex justify-between py-2 border-t border-gray-200 dark:border-gray-700 mt-1">
                 <span className="text-sm font-bold text-gray-600 dark:text-gray-300">Total Deductions</span>
                 <span className="font-mono text-sm font-bold text-red-600">- KES {Number(drillFarmer.totalDeductions).toLocaleString()}</span>
@@ -601,7 +617,7 @@ function PaymentReport({ payments, allPayments, loading, label, month, year, isM
               <tbody>
                 {payments.map((p: any) => (
                   <tr key={p.id}
-                    onClick={() => setDrillFarmer(p)}
+                    onClick={() => openDrill(p)}
                     className={`border-b dark:border-gray-700 last:border-0 cursor-pointer ${Number(p.netPay) < 0 ? 'bg-red-50 dark:bg-red-900/10 hover:bg-red-100' : 'hover:bg-green-50 dark:hover:bg-green-900/10'}`}>
                     <td className="px-3 py-2.5 font-mono text-xs text-gray-400">{p.farmer?.code}</td>
                     <td className="px-3 py-2.5 font-medium text-xs">

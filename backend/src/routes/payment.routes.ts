@@ -6,11 +6,25 @@ import { AppError } from '../middleware/errorHandler';
 const router = Router();
 router.use(authenticate);
 
-// ─── Compute payment for a period ────────────────────────────────────────────
+// ─── Date helpers ────────────────────────────────────────────────────────────
+// PAYMENT RULES:
+// paidOn15th=true  + isMidMonth=true  → litres 1-15,  advances 5+10,  b/f from prev end-month, other deductions
+// paidOn15th=true  + isMidMonth=false → litres 16-end, advances 20+25, NO b/f (already deducted mid), other deductions
+//   EXCEPTION: if farmer had negative mid-month (wasn't paid), treat as full-month at end-month
+// paidOn15th=false + isMidMonth=false → litres 1-end,  all advances,   b/f from prev end-month, other deductions
+
+function getDateRanges(month: number, year: number) {
+  return {
+    midStart:  new Date(year, month - 1, 1),
+    midEnd:    new Date(year, month - 1, 16),  // exclusive → days 1-15
+    endStart:  new Date(year, month - 1, 16),
+    fullEnd:   new Date(year, month, 1),        // exclusive → full month
+  };
+}
+
+// Legacy helper kept for backward compat
 function periodDates(month: number, year: number, isMidMonth: boolean) {
-  if (isMidMonth) {
-    return { start: new Date(year, month - 1, 1), end: new Date(year, month - 1, 16) };
-  }
+  if (isMidMonth) return { start: new Date(year, month - 1, 1), end: new Date(year, month - 1, 16) };
   return { start: new Date(year, month - 1, 1), end: new Date(year, month, 1) };
 }
 
@@ -21,55 +35,91 @@ async function computeFarmerPayment(farmerId: number, month: number, year: numbe
   });
   if (!farmer) return null;
 
-  const { start, end } = periodDates(month, year, isMidMonth);
+  const { midStart, midEnd, endStart, fullEnd } = getDateRanges(month, year);
 
-  // Collections for the period
-  const collAgg = await prisma.milkCollection.aggregate({
-    where: { farmerId, collectedAt: { gte: start, lt: end } },
-    _sum: { litres: true },
-  });
-  const totalLitres = Number(collAgg._sum.litres || 0);
-  const grossPay = totalLitres * Number(farmer.pricePerLitre);
+  // Check if this paidOn15th farmer had a negative mid-month (treat as full-month at end)
+  let treatAsFull = false;
+  if (!isMidMonth && farmer.paidOn15th) {
+    const midPayment = await prisma.farmerPayment.findFirst({
+      where: { farmerId, periodMonth: month, periodYear: year, isMidMonth: true },
+      select: { netPay: true, id: true },
+    });
+    // No mid-month record OR negative mid-month → treat as full-month
+    if (!midPayment || Number(midPayment.netPay) <= 0) treatAsFull = true;
+  }
 
-  // Advances for the period
-  const advAgg = await prisma.farmerAdvance.aggregate({
-    where: { farmerId, advanceDate: { gte: start, lt: end } },
-    _sum: { amount: true },
-  });
-  const totalAdvances = Number(advAgg._sum.amount || 0);
+  // ── Collection date range ───────────────────────────────────────────────────
+  let collStart: Date, collEnd: Date;
+  if (isMidMonth) {
+    // Mid-month: always 1-15
+    collStart = midStart; collEnd = midEnd;
+  } else if (farmer.paidOn15th && !treatAsFull) {
+    // Normal end-month for paidOn15th: 16-end
+    collStart = endStart; collEnd = fullEnd;
+  } else {
+    // Full month: either paidOn15th=false OR paidOn15th with missed/negative mid
+    collStart = midStart; collEnd = fullEnd;
+  }
 
-  // Deductions (liquid variance charges etc.)
-  const dedAgg = await prisma.farmerDeduction.aggregate({
-    where: { farmerId, periodMonth: month, periodYear: year },
-    _sum: { amount: true },
-  });
-  const totalDeductions = Number(dedAgg._sum.amount || 0);
+  // ── Advance date range ──────────────────────────────────────────────────────
+  let advStart: Date, advEnd: Date;
+  if (isMidMonth) {
+    advStart = midStart; advEnd = midEnd;     // 5th + 10th advances
+  } else if (farmer.paidOn15th && !treatAsFull) {
+    advStart = endStart; advEnd = fullEnd;    // 20th + 25th advances only
+  } else {
+    advStart = midStart; advEnd = fullEnd;    // all advances
+  }
 
-  // Previous negative balance (carried forward)
-  const prevPayment = await prisma.farmerPayment.findFirst({
-    where: { farmerId, status: 'PAID', netPay: { lt: 0 } },
-    orderBy: [{ periodYear: 'desc' }, { periodMonth: 'desc' }],
-  });
-  const carriedForward = prevPayment ? Math.abs(Number(prevPayment.netPay)) : 0;
+  // ── B/f rule: ONLY deducted at mid-month (or full-month-only farmers) ───────
+  // NEVER deduct b/f at end-month for paidOn15th farmers (already taken mid)
+  let bfBalance = 0;
+  const includeBf = isMidMonth || !farmer.paidOn15th || treatAsFull;
+  if (includeBf) {
+    const prevEndMonth = month === 1 ? 12 : month - 1;
+    const prevEndYear  = month === 1 ? year - 1 : year;
+    // Check office b/f correction first
+    const bfDeduction = await prisma.farmerDeduction.findFirst({
+      where: { farmerId, periodMonth: month, periodYear: year, reason: { contains: 'B/f' } },
+      orderBy: { deductionDate: 'desc' },
+    });
+    if (bfDeduction) {
+      bfBalance = Number(bfDeduction.amount);
+    } else {
+      // Previous end-month negative
+      const prevNeg = await prisma.farmerPayment.findFirst({
+        where: { farmerId, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
+      });
+      if (prevNeg) bfBalance = Math.abs(Number(prevNeg.netPay));
+    }
+  }
 
-  const netPay = grossPay - totalAdvances - totalDeductions - carriedForward;
-  const combinedDeductions = totalAdvances + totalDeductions + carriedForward; // b/f + advances + other
+  // ── Fetch data ──────────────────────────────────────────────────────────────
+  const [collAgg, advAgg, dedAgg] = await Promise.all([
+    prisma.milkCollection.aggregate({ where: { farmerId, collectedAt: { gte: collStart, lt: collEnd } }, _sum: { litres: true } }),
+    prisma.farmerAdvance.aggregate({ where: { farmerId, advanceDate: { gte: advStart, lt: advEnd } }, _sum: { amount: true } }),
+    prisma.farmerDeduction.aggregate({ where: { farmerId, periodMonth: month, periodYear: year, reason: { not: { contains: 'B/f' } } }, _sum: { amount: true } }),
+  ]);
+
+  const totalLitres    = Number(collAgg._sum.litres || 0);
+  const grossPay       = totalLitres * Number(farmer.pricePerLitre);
+  const totalAdvances  = Number(advAgg._sum.amount || 0);
+  const otherDed       = Number(dedAgg._sum.amount || 0); // AI charges etc.
+  const totalDeductions = totalAdvances + bfBalance + otherDed;
+  const netPay          = grossPay - totalDeductions;
 
   return {
     farmer: {
       id: farmer.id, code: farmer.code, name: farmer.name,
       phone: farmer.phone, mpesaPhone: farmer.mpesaPhone,
-      paymentMethod: farmer.paymentMethod,
+      paymentMethod: farmer.paymentMethod, pricePerLitre: Number(farmer.pricePerLitre),
       bankName: farmer.bankName, bankAccount: farmer.bankAccount,
-      paidOn15th: farmer.paidOn15th,
-      route: farmer.route,
+      paidOn15th: farmer.paidOn15th, route: farmer.route,
     },
-    totalLitres, grossPay,
-    totalAdvances,          // advances only
-    totalDeductions: combinedDeductions, // ALL deductions: b/f + advances + other
-    otherDeductions: totalDeductions,    // non-advance deductions (AI charges etc.)
-    carriedForward,
-    netPay, pricePerLitre: Number(farmer.pricePerLitre),
+    totalLitres, grossPay, totalAdvances, otherDeductions: otherDed,
+    bfBalance, totalDeductions, carriedForward: bfBalance,
+    netPay, treatAsFull,
+    periodLabel: isMidMonth ? '1–15' : (farmer.paidOn15th && !treatAsFull) ? '16–end' : '1–end',
   };
 }
 
@@ -189,21 +239,16 @@ router.get('/', async (req, res) => {
   res.json({ routes: Object.values(byRoute).sort((a: any, b: any) => (a.routeCode||'').localeCompare(b.routeCode||'')), totalFarmers: Object.values(byRoute).reduce((s: number, r: any) => s + r.farmers.length, 0) });
 });
 
-// POST /api/payments/run — generate FarmerPayment records
+// POST /api/payments/run — generate FarmerPayment records (batch)
 router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
   const { month, year, isMidMonth, routeId } = req.body;
   const m = Number(month); const y = Number(year); const mid = !!isMidMonth;
+  const { midStart, midEnd, endStart, fullEnd } = getDateRanges(m, y);
 
-  // ── Date ranges ─────────────────────────────────────────────────────────────
-  const midStart  = new Date(y, m - 1, 1);
-  const midEnd    = new Date(y, m - 1, 16);   // days 1-15
-  const fullStart = new Date(y, m - 1, 1);
-  const fullEnd   = new Date(y, m, 1);         // full month
-  const endStart  = new Date(y, m - 1, 16);   // 16th onwards
-
-  // ── Fetch farmers ────────────────────────────────────────────────────────────
+  // ── Fetch farmers ──────────────────────────────────────────────────────────
   const whereRoute: any = { isActive: true };
   if (routeId) whereRoute.routeId = Number(routeId);
+  // Mid-month run: only paidOn15th farmers
   if (mid) whereRoute.paidOn15th = true;
 
   const farmers = await prisma.farmer.findMany({
@@ -211,118 +256,112 @@ router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
     select: { id: true, pricePerLitre: true, paidOn15th: true },
   });
   if (farmers.length === 0) return res.json({ created: 0, message: 'No farmers found' });
-
   const farmerIds = farmers.map(f => f.id);
 
-  // ── Fetch ALL collections for the full month — we'll filter per farmer below ─
-  // This avoids complex split queries
-  const [allCollections, allAdvances, deductions, midNegatives] = await Promise.all([
-    // All collections for the full month
-    prisma.milkCollection.groupBy({
-      by: ['farmerId'],
-      where: { farmerId: { in: farmerIds }, collectedAt: { gte: fullStart, lt: fullEnd } },
-      _sum: { litres: true },
-    }),
-    // All advances for the full month
-    prisma.farmerAdvance.findMany({
-      where: { farmerId: { in: farmerIds }, advanceDate: { gte: fullStart, lt: fullEnd } },
-      select: { farmerId: true, amount: true, advanceDate: true },
-    }),
-    // Deductions this period
-    prisma.farmerDeduction.groupBy({
-      by: ['farmerId'],
-      where: { farmerId: { in: farmerIds }, periodMonth: m, periodYear: y },
-      _sum: { amount: true },
-    }),
-    // Mid-month negatives (for end-month b/f)
-    !mid ? prisma.farmerPayment.findMany({
-      where: { farmerId: { in: farmerIds }, periodMonth: m, periodYear: y, isMidMonth: true, netPay: { lt: 0 } },
+  // ── For end-month: find paidOn15th farmers with missing/negative mid-month → treat as full ──
+  let treatAsFullIds = new Set<number>();
+  if (!mid) {
+    const midPayments = await prisma.farmerPayment.findMany({
+      where: { farmerId: { in: farmerIds }, periodMonth: m, periodYear: y, isMidMonth: true },
       select: { farmerId: true, netPay: true },
-    }) : Promise.resolve([]),
-  ]);
-
-  // ── Build lookup maps ────────────────────────────────────────────────────────
-  const fullCollMap = new Map(allCollections.map(c => [c.farmerId, Number(c._sum.litres || 0)]));
-  const dedMap      = new Map(deductions.map(d => [d.farmerId, Number(d._sum.amount || 0)]));
-  const bfMap       = new Map((midNegatives as any[]).map(p => [p.farmerId, Math.abs(Number(p.netPay))]));
-
-  // Build per-farmer advance maps split by date
-  const midAdvMap  = new Map<number, number>(); // advances 1-15
-  const endAdvMap  = new Map<number, number>(); // advances 16-end
-  const fullAdvMap = new Map<number, number>(); // all advances
-  for (const a of allAdvances) {
-    const d = new Date(a.advanceDate).getDate();
-    const amt = Number(a.amount);
-    fullAdvMap.set(a.farmerId, (fullAdvMap.get(a.farmerId) || 0) + amt);
-    if (d <= 15) midAdvMap.set(a.farmerId,  (midAdvMap.get(a.farmerId)  || 0) + amt);
-    else          endAdvMap.set(a.farmerId,  (endAdvMap.get(a.farmerId)  || 0) + amt);
+    });
+    const midMap = new Map(midPayments.map(p => [p.farmerId, Number(p.netPay)]));
+    for (const f of farmers) {
+      if (f.paidOn15th) {
+        const midNet = midMap.get(f.id);
+        // No mid-month record OR was negative → treat as full month at end-month
+        if (midNet === undefined || Number(midNet) <= 0) treatAsFullIds.add(f.id);
+      }
+    }
   }
 
-  // Mid-month collections (1-15) — filter from full month data
-  const midCollections = await prisma.milkCollection.groupBy({
+  // ── Fetch collections (3 ranges) ──────────────────────────────────────────
+  const [midColl, endColl, fullColl] = await Promise.all([
+    // 1-15
+    prisma.milkCollection.groupBy({ by: ['farmerId'], where: { farmerId: { in: farmerIds }, collectedAt: { gte: midStart, lt: midEnd } }, _sum: { litres: true } }),
+    // 16-end
+    prisma.milkCollection.groupBy({ by: ['farmerId'], where: { farmerId: { in: farmerIds }, collectedAt: { gte: endStart, lt: fullEnd } }, _sum: { litres: true } }),
+    // 1-end (for full-month farmers)
+    prisma.milkCollection.groupBy({ by: ['farmerId'], where: { farmerId: { in: farmerIds }, collectedAt: { gte: midStart, lt: fullEnd } }, _sum: { litres: true } }),
+  ]);
+  const midCollMap  = new Map(midColl.map(c  => [c.farmerId, Number(c._sum.litres || 0)]));
+  const endCollMap  = new Map(endColl.map(c  => [c.farmerId, Number(c._sum.litres || 0)]));
+  const fullCollMap = new Map(fullColl.map(c => [c.farmerId, Number(c._sum.litres || 0)]));
+
+  // ── Fetch advances (3 ranges) ─────────────────────────────────────────────
+  const [midAdv, endAdv, fullAdv] = await Promise.all([
+    // 5th + 10th
+    prisma.farmerAdvance.groupBy({ by: ['farmerId'], where: { farmerId: { in: farmerIds }, advanceDate: { gte: midStart, lt: midEnd } }, _sum: { amount: true } }),
+    // 20th + 25th
+    prisma.farmerAdvance.groupBy({ by: ['farmerId'], where: { farmerId: { in: farmerIds }, advanceDate: { gte: endStart, lt: fullEnd } }, _sum: { amount: true } }),
+    // All advances
+    prisma.farmerAdvance.groupBy({ by: ['farmerId'], where: { farmerId: { in: farmerIds }, advanceDate: { gte: midStart, lt: fullEnd } }, _sum: { amount: true } }),
+  ]);
+  const midAdvMap  = new Map(midAdv.map(a  => [a.farmerId, Number(a._sum.amount || 0)]));
+  const endAdvMap  = new Map(endAdv.map(a  => [a.farmerId, Number(a._sum.amount || 0)]));
+  const fullAdvMap = new Map(fullAdv.map(a => [a.farmerId, Number(a._sum.amount || 0)]));
+
+  // ── Other deductions (non-b/f) ────────────────────────────────────────────
+  const otherDeds = await prisma.farmerDeduction.groupBy({
     by: ['farmerId'],
-    where: { farmerId: { in: farmerIds }, collectedAt: { gte: midStart, lt: midEnd } },
-    _sum: { litres: true },
+    where: { farmerId: { in: farmerIds }, periodMonth: m, periodYear: y, reason: { not: { contains: 'B/f' } } },
+    _sum: { amount: true },
   });
-  const midCollMap = new Map(midCollections.map(c => [c.farmerId, Number(c._sum.litres || 0)]));
+  const otherDedMap = new Map(otherDeds.map(d => [d.farmerId, Number(d._sum.amount || 0)]));
 
-  // End-month collections (16-end)
-  const endCollections = await prisma.milkCollection.groupBy({
-    by: ['farmerId'],
-    where: { farmerId: { in: farmerIds }, collectedAt: { gte: endStart, lt: fullEnd } },
-    _sum: { litres: true },
-  });
-  const endCollMap = new Map(endCollections.map(c => [c.farmerId, Number(c._sum.litres || 0)]));
+  // ── B/f: only for mid-month runs AND full-month farmers AND treatAsFull ───
+  // NEVER apply b/f to a normal end-month for paidOn15th farmers
+  const bfMap = new Map<number, number>();
+  const needsBf = farmers.filter(f => mid || !f.paidOn15th || treatAsFullIds.has(f.id));
+  if (needsBf.length > 0) {
+    const bfFarmerIds = needsBf.map(f => f.id);
+    const prevEndMonth = m === 1 ? 12 : m - 1;
+    const prevEndYear  = m === 1 ? y - 1 : y;
+    // Office b/f corrections
+    const bfCorrections = await prisma.farmerDeduction.findMany({
+      where: { farmerId: { in: bfFarmerIds }, periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
+      select: { farmerId: true, amount: true },
+    });
+    for (const d of bfCorrections) bfMap.set(d.farmerId, Number(d.amount));
+    // Previous end-month negatives (only for those without office correction)
+    const noCorrection = bfFarmerIds.filter(id => !bfMap.has(id));
+    if (noCorrection.length > 0) {
+      const prevNegatives = await prisma.farmerPayment.findMany({
+        where: { farmerId: { in: noCorrection }, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
+        select: { farmerId: true, netPay: true },
+      });
+      for (const p of prevNegatives) bfMap.set(p.farmerId, Math.abs(Number(p.netPay)));
+    }
+  }
 
-  // ── Compute payment records ──────────────────────────────────────────────────
-  // MATH VERIFICATION:
-  // Mid-month (paidOn15th=true):
-  //   gross    = litres(1-15) × price
-  //   deduct   = advances(5th+10th) + otherDeductions
-  //   netPay   = gross - deduct
-  //
-  // End-month (paidOn15th=true):
-  //   gross    = litres(16-end) × price
-  //   deduct   = advances(20th+25th) + otherDeductions + bfFromMidNegative
-  //   netPay   = gross - deduct
-  //   NOTE: b/f = |midMonthNetPay| only if midNetPay < 0
-  //
-  // Full month (paidOn15th=false):
-  //   gross    = litres(1-end) × price
-  //   deduct   = allAdvances(5+10+20+25) + otherDeductions + prevMonthBf
-  //   netPay   = gross - deduct
-
+  // ── Compute records ───────────────────────────────────────────────────────
   const records: any[] = [];
-
   for (const f of farmers) {
-    const price = Number(f.pricePerLitre) || 46;
-    let litres: number;
-    let advances: number;
+    const price  = Number(f.pricePerLitre) || 46;
+    const isFull = !f.paidOn15th || treatAsFullIds.has(f.id);
 
+    let litres: number, advances: number;
     if (mid) {
-      // Mid-month: 1-15 only
+      // Mid-month: 1-15 collections + 5th/10th advances
       litres   = Number(midCollMap.get(f.id)  || 0);
       advances = Number(midAdvMap.get(f.id)   || 0);
-    } else if (f.paidOn15th) {
-      // End-month for mid-month farmers: 16-end only
-      litres   = Number(endCollMap.get(f.id)  || 0);
-      advances = Number(endAdvMap.get(f.id)   || 0);
-    } else {
-      // Full month: 1-end
+    } else if (isFull) {
+      // Full-month (either paidOn15th=false OR missed/negative mid): 1-end + all advances
       litres   = Number(fullCollMap.get(f.id) || 0);
       advances = Number(fullAdvMap.get(f.id)  || 0);
+    } else {
+      // Normal end-month for paidOn15th: 16-end + 20th/25th advances
+      litres   = Number(endCollMap.get(f.id)  || 0);
+      advances = Number(endAdvMap.get(f.id)   || 0);
     }
 
     if (litres === 0) continue;
 
-    const grossPay     = litres * price;
-    // otherDeductions = AI charges, water fees etc (NOT b/f, NOT advances)
-    const otherDed     = Number(dedMap.get(f.id) || 0);
-    // b/f only applies to end-month for paidOn15th farmers whose mid-month was negative
-    // For full-month farmers, b/f is handled via deductions entered in the journal
-    const bfCarried    = (!mid && f.paidOn15th) ? Number(bfMap.get(f.id) || 0) : 0;
-    const totalDeductions = advances + otherDed + bfCarried;
-    const netPay       = grossPay - totalDeductions;
+    const grossPay        = litres * price;
+    const otherDed        = Number(otherDedMap.get(f.id) || 0);
+    const bf              = Number(bfMap.get(f.id) || 0);
+    const totalDeductions = advances + otherDed + bf;
+    const netPay          = grossPay - totalDeductions;
 
     records.push({
       farmerId: f.id, periodMonth: m, periodYear: y, isMidMonth: mid,
@@ -332,28 +371,18 @@ router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
 
   if (records.length === 0) return res.json({ created: 0, message: 'No collections found for this period' });
 
-  // ── Upsert in batches of 100 ─────────────────────────────────────────────────
+  // ── Upsert in batches of 100 ──────────────────────────────────────────────
   let created = 0;
   const BATCH = 100;
   for (let i = 0; i < records.length; i += BATCH) {
     const batch = records.slice(i, i + BATCH);
     await Promise.all(batch.map(r => prisma.farmerPayment.upsert({
-      where: {
-        farmerId_periodMonth_periodYear_isMidMonth: {
-          farmerId: r.farmerId, periodMonth: r.periodMonth,
-          periodYear: r.periodYear, isMidMonth: r.isMidMonth,
-        },
-      },
-      update: {
-        grossPay: r.grossPay, totalAdvances: r.totalAdvances,
-        totalDeductions: r.totalDeductions, netPay: r.netPay,
-        status: 'PENDING',
-      },
+      where: { farmerId_periodMonth_periodYear_isMidMonth: { farmerId: r.farmerId, periodMonth: r.periodMonth, periodYear: r.periodYear, isMidMonth: r.isMidMonth } },
+      update: { grossPay: r.grossPay, totalAdvances: r.totalAdvances, totalDeductions: r.totalDeductions, netPay: r.netPay, status: 'PENDING' },
       create: r,
     })));
     created += batch.length;
   }
-
   res.json({ created, message: `Generated ${created} payment records` });
 });
 
@@ -600,4 +629,26 @@ router.get('/kopokopo-balance', authorize('ADMIN', 'OFFICE'), async (_req, res) 
   } catch (e: any) {
     res.json({ amount: 0, currency: 'KES', error: e.message });
   }
+});
+
+// POST /api/payments/kopokopo-config — save KopoKopo credentials to env
+router.post('/kopokopo-config', authorize('ADMIN'), async (req: any, res) => {
+  const { clientId, clientSecret, tillIdentifier, env } = req.body;
+  // In production these would be written to Railway environment variables via the Railway API
+  // For now store in DB config table or return instructions
+  res.json({
+    message: 'To connect your live KopoKopo account, set these Railway environment variables:',
+    vars: {
+      KOPOKOPO_CLIENT_ID: clientId || '(enter your client ID)',
+      KOPOKOPO_CLIENT_SECRET: clientSecret ? '(secret received)' : '(enter your secret)',
+      KOPOKOPO_TILL_IDENTIFIER: tillIdentifier || '(enter your till)',
+      KOPOKOPO_ENV: env || 'production',
+    },
+    instructions: [
+      '1. Go to railway.app → your project → Variables',
+      '2. Add each variable above with your actual values',
+      '3. Redeploy the service',
+      '4. Come back and test with a small payment first',
+    ],
+  });
 });

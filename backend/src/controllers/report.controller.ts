@@ -347,24 +347,24 @@ export async function getShopsReport(req: Request, res: Response) {
     const delivered    = dropMap.get(shop.id) || 0;
     const saleData     = saleMap.get(shop.id) || { sold: 0, cash: 0, till: 0 };
     // Opening = previous month (delivered - sold) — what was left over
-    const prevDelivered  = prevDropMap.get(shop.id) || 0;
-    const prevSold       = prevSaleMap.get(shop.id) || 0;
+    const prevDelivered  = Number(prevDropMap.get(shop.id) || 0);
+    const prevSold       = Number(prevSaleMap.get(shop.id) || 0);
     const openingLitres  = Math.max(0, prevDelivered - prevSold);
-    const availableForSale = openingLitres + delivered;
-    const variance         = availableForSale - saleData.sold;
-    const expectedRevenue  = saleData.sold * 60;
-    const actualRevenue    = saleData.cash + saleData.till;
+    const availableForSale = openingLitres + Number(delivered);
+    const variance         = availableForSale - Number(saleData.sold);
+    const expectedRevenue  = Number(saleData.sold) * 60;
+    const actualRevenue    = Number(saleData.cash) + Number(saleData.till);
     return {
       shopId: shop.id, shopName: shop.name, keeperName: shop.keeper?.name || '–',
       openingLitres, delivered, availableForSale,
-      ...saleData,
+      sold: Number(saleData.sold), cash: Number(saleData.cash), till: Number(saleData.till),
       variance,
-      unaccounted: delivered - saleData.sold,
+      unaccounted: Number(delivered) - Number(saleData.sold),
       expectedRevenue, actualRevenue,
       revenueVariance: actualRevenue - expectedRevenue,
-      performancePct: availableForSale > 0 ? Math.round((saleData.sold / availableForSale) * 100) : 0,
+      performancePct: availableForSale > 0 ? Math.round((Number(saleData.sold) / availableForSale) * 100) : 0,
     };
-  }).filter(s => s.delivered > 0 || s.sold > 0 || s.openingLitres > 0);
+  }).filter((s: any) => s.delivered > 0 || s.sold > 0 || s.openingLitres > 0);
 
   res.json({
     shops: shopsData,

@@ -332,7 +332,6 @@ export default function AdvancesPage() {
             </tbody>
           </table>
         </div>
-        </div>
         );
       })}
     </div>

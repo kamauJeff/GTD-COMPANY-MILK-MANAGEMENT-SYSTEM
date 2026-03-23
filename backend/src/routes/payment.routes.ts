@@ -147,25 +147,35 @@ router.get('/', async (req, res) => {
       orderBy: [{ farmer: { route: { code: 'asc' } } }, { farmer: { name: 'asc' } }],
     });
 
-    // Compute totalLitres per farmer for this period (for drill-down)
+    // Compute totalLitres per farmer for this period (correct range per farmer type)
     const farmerIds = payments.map(p => p.farmerId);
     const { start, end } = periodDates(m, y, mid);
-    // For paidOn15th end-month, adjust range
-    const collRanges = payments.map(p => {
-      if (!mid && (p.farmer as any).paidOn15th) {
-        return { farmerId: p.farmerId, start: new Date(y, m - 1, 16), end: new Date(y, m, 1) };
-      }
-      return { farmerId: p.farmerId, start, end };
-    });
-    // Batch collection lookup
-    const collAgg = await prisma.milkCollection.groupBy({
-      by: ['farmerId'],
-      where: { farmerId: { in: farmerIds }, collectedAt: { gte: start, lt: new Date(y, m, 1) } },
-      _sum: { litres: true },
-    });
-    const litresMap = new Map(collAgg.map(c => [c.farmerId, Number(c._sum.litres || 0)]));
+    const midStart15 = new Date(y, m - 1, 1);
+    const midEnd15   = new Date(y, m - 1, 16);  // 1-15 exclusive
+    const endStart16 = new Date(y, m - 1, 16);
+    const fullEnd    = new Date(y, m, 1);
 
-    // Attach totalLitres and derived price to each payment
+    // Separate farmers by their payment range
+    const midFarmerIds  = payments.filter(p => mid || (!(p.farmer as any).paidOn15th)).map(p => p.farmerId);
+    const endFarmerIds  = payments.filter(p => !mid && (p.farmer as any).paidOn15th).map(p => p.farmerId);
+
+    const [midCollAgg, endCollAgg] = await Promise.all([
+      midFarmerIds.length > 0 ? prisma.milkCollection.groupBy({
+        by: ['farmerId'],
+        where: { farmerId: { in: midFarmerIds }, collectedAt: { gte: mid ? midStart15 : midStart15, lt: mid ? midEnd15 : fullEnd } },
+        _sum: { litres: true },
+      }) : Promise.resolve([]),
+      endFarmerIds.length > 0 ? prisma.milkCollection.groupBy({
+        by: ['farmerId'],
+        where: { farmerId: { in: endFarmerIds }, collectedAt: { gte: endStart16, lt: fullEnd } },
+        _sum: { litres: true },
+      }) : Promise.resolve([]),
+    ]);
+
+    const litresMap = new Map<number, number>();
+    for (const c of [...midCollAgg, ...endCollAgg]) litresMap.set(c.farmerId, Number(c._sum.litres || 0));
+
+    // Attach correct totalLitres and price
     const enriched = payments.map(p => ({
       ...p,
       totalLitres: litresMap.get(p.farmerId) || 0,

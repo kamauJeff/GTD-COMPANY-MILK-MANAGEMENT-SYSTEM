@@ -88,24 +88,21 @@ router.get('/statement', async (req, res) => {
 
   const grossPay = totalLitres * Number(farmer.pricePerLitre);
 
-  // Advances — group by exact date day, chronologically ordered [5, 10, 20, 25]
-  const ADVANCE_DATES = [5, 10, 20, 25];
-  const advancesByDate: Record<number, number> = {}; // day → total amount
+  // ── Advances — each one listed individually, correct ordinal suffix ────────────
+  function ordinal(n: number): string {
+    const s = ['th','st','nd','rd'];
+    const v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  }
+  const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  const advancesOrdered: { day: number; label: string; amount: number }[] = [];
   let totalAdvances = 0;
   for (const a of advances) {
     const day = new Date(a.advanceDate).getDate();
-    advancesByDate[day] = (advancesByDate[day] || 0) + Number(a.amount);
+    const label = `Advance — ${ordinal(day)} ${MONTH_SHORT[m-1]}`;
+    advancesOrdered.push({ day, label, amount: Number(a.amount) });
     totalAdvances += Number(a.amount);
-  }
-  // Build ordered advances array for display
-  const advancesOrdered: { day: number; label: string; amount: number }[] = [];
-  const sortedDays = Object.keys(advancesByDate).map(Number).sort((a, b) => a - b);
-  for (const day of sortedDays) {
-    advancesOrdered.push({
-      day,
-      label: `${day}th ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1]}`,
-      amount: advancesByDate[day],
-    });
   }
 
   // ── B/f Rules (deducted ONCE only) ────────────────────────────────────────────

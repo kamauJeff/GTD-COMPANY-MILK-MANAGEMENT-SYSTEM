@@ -129,7 +129,7 @@ export default function FarmerStatementScreen({ farmerCode, month, year, onClose
         ? data.deductionsList
         : [
             ...(data.bfBalance > 0 ? [{ label: 'Balance b/f', amount: data.bfBalance }] : []),
-            ...(Array.isArray(data.advances) ? data.advances.map((a: any) => ({ label: `Advance — ${a.label}`, amount: a.amount })) : []),
+            ...(Array.isArray(data.advances) ? data.advances.map((a: any) => ({ label: a.label, amount: a.amount })) : []),
           ]
       ).map((d: any) =>
         `<div class="deduct-row"><span>${d.label}:</span><span>- KES ${Number(d.amount).toLocaleString()}</span></div>`
@@ -267,7 +267,7 @@ export default function FarmerStatementScreen({ farmerCode, month, year, onClose
               ? data.deductionsList
               : [
                   ...(data.bfBalance > 0 ? [{ label: 'Balance b/f', amount: data.bfBalance }] : []),
-                  ...(Array.isArray(data.advances) ? data.advances.map((a: any) => ({ label: `Advance — ${a.label}`, amount: a.amount })) : []),
+                  ...(Array.isArray(data.advances) ? data.advances.map((a: any) => ({ label: a.label, amount: a.amount })) : []),
                 ]
             ).map((d: any, i: number) => (
               <Row key={i} label={`  ${d.label}`} value={`- KES ${Number(d.amount).toLocaleString()}`} negative />

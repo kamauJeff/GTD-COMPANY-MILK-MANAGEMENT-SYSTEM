@@ -250,7 +250,7 @@ export default function DisbursementPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
-                <tr>{['Code','Farmer','Route','Method','Account','Period','Litres','Gross','Deductions','Net Pay','Status'].map(h => (
+                <tr>{['Code','Farmer','Route','Method','Account','Period',isMidMonth ? 'Litres (1–15)' : 'Litres (period)','Gross','Deductions','Net Pay','Status'].map(h => (
                   <th key={h} className="text-left px-3 py-2.5 text-xs text-gray-500 font-medium whitespace-nowrap">{h}</th>
                 ))}</tr>
               </thead>

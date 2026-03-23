@@ -101,23 +101,28 @@ export default function AdvancesPage() {
     onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
   });
 
-  const totalAdvances = advances.reduce((s, a) => s + Number(a.amount), 0);
+  const totalAdvances = advances.reduce((s, a) => s + Number(a.amount), 0); // includes negatives (corrections)
 
-  // Group by advance date
+  // Group by advance date — sort dates ascending
   const byDate: Record<string, any[]> = {};
   for (const a of advances) {
     const d = new Date(a.advanceDate).getDate();
-    const key = `${d}th`;
+    const key = `${d}`;
     if (!byDate[key]) byDate[key] = [];
     byDate[key].push(a);
   }
+  const sortedDates = Object.keys(byDate).map(Number).sort((a, b) => a - b);
+
+  // Net total = sum of all advances (negatives cancel out positives = corrections)
+  const netTotal = advances.reduce((s, a) => s + Number(a.amount), 0);
+  const hasNegatives = advances.some(a => Number(a.amount) < 0);
 
   return (
     <div className="p-4 md:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-gray-800 dark:text-gray-100">Advances & Deductions</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{MONTHS[month-1]} {year} · {advances.length} records · KES {totalAdvances.toLocaleString()}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{MONTHS[month-1]} {year} · {advances.length} records · Net KES {totalAdvances.toLocaleString()}{hasNegatives ? ' (includes corrections)' : ''}</p>
         </div>
         <div className="flex gap-2 flex-wrap">
           <select value={month} onChange={e => setMonth(Number(e.target.value))} className="px-3 py-2 border rounded-lg text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100">
@@ -278,12 +283,22 @@ export default function AdvancesPage() {
           <div className="text-3xl mb-3">💰</div>
           <div className="font-medium">No {tab} recorded for {MONTHS[month-1]} {year}</div>
         </div>
-      ) : Object.entries(byDate).map(([dateKey, items]) => (
-        <div key={dateKey} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden mb-4">
+      ) : sortedDates.map(dayNum => {
+        const items = byDate[String(dayNum)];
+        const dayNet = items.reduce((s: number, a: any) => s + Number(a.amount), 0);
+        const hasNeg = items.some((a: any) => Number(a.amount) < 0);
+        const ordSuffix = ['th','st','nd','rd'];
+        const v = dayNum % 100;
+        const ord = dayNum + (ordSuffix[(v-20)%10] || ordSuffix[v] || ordSuffix[0]);
+        return (
+        <div key={dayNum} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden mb-4">
           <div className="flex items-center justify-between px-4 py-3 bg-orange-50 dark:bg-orange-900/20 border-b border-orange-200 dark:border-orange-800">
-            <div className="font-semibold text-orange-700 dark:text-orange-400">{dateKey} {MONTHS[month-1]} — {items.length} farmers</div>
-            <div className="font-bold text-orange-600 dark:text-orange-400">
-              KES {items.reduce((s, a) => s + Number(a.amount), 0).toLocaleString()}
+            <div className="font-semibold text-orange-700 dark:text-orange-400">
+              {ord} {MONTHS[month-1]} — {items.length} record{items.length !== 1 ? 's' : ''}
+              {hasNeg && <span className="ml-2 text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">⚠ has correction</span>}
+            </div>
+            <div className={`font-bold font-mono ${dayNet < 0 ? 'text-red-600' : 'text-orange-600 dark:text-orange-400'}`}>
+              Net KES {dayNet.toLocaleString()}
             </div>
           </div>
           <table className="w-full text-sm">
@@ -303,7 +318,9 @@ export default function AdvancesPage() {
                       {a.farmer?.paymentMethod === 'MPESA' ? '📱' : '🏦'}
                     </span>
                   </td>
-                  <td className="px-3 py-2.5 font-bold text-orange-600 font-mono">KES {Number(a.amount).toLocaleString()}</td>
+                  <td className={`px-3 py-2.5 font-bold font-mono ${Number(a.amount) < 0 ? 'text-red-600' : 'text-orange-600'}`}>
+                    {Number(a.amount) < 0 ? '⚠ CORRECTION ' : ''}KES {Number(a.amount).toLocaleString()}
+                  </td>
                   <td className="px-3 py-2.5 text-xs text-gray-400">{a.notes || '–'}</td>
                   <td className="px-3 py-2.5">
                     <button onClick={() => deleteMut.mutate(a.id)} className="text-red-400 hover:text-red-600">
@@ -315,7 +332,9 @@ export default function AdvancesPage() {
             </tbody>
           </table>
         </div>
-      ))}
+        </div>
+        );
+      })}
     </div>
   );
 }

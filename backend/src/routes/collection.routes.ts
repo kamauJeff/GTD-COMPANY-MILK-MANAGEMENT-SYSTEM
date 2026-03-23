@@ -104,13 +104,25 @@ router.get('/statement', async (req, res) => {
   }
   const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-  const advancesOrdered: { day: number; label: string; amount: number }[] = [];
   let totalAdvances = 0;
+
+  // ── Clean advances: group by exact date, net positive+negative pairs ──────────
+  // This handles corrections that were entered as negative amounts
+  const advByDay: Record<number, number> = {};
   for (const a of advances) {
     const day = new Date(a.advanceDate).getDate();
+    advByDay[day] = (advByDay[day] || 0) + Number(a.amount);
+  }
+
+  // Build ordered list — only include days where net amount > 0
+  // (if net is 0 or negative, the advance was fully corrected/reversed)
+  const advancesOrdered: { day: number; label: string; amount: number }[] = [];
+  for (const [dayStr, netAmount] of Object.entries(advByDay).sort((a, b) => Number(a[0]) - Number(b[0]))) {
+    const day = Number(dayStr);
+    if (netAmount <= 0) continue;  // skip reversed/corrected advances
     const label = `Advance — ${ordinal(day)} ${MONTH_SHORT[m-1]}`;
-    advancesOrdered.push({ day, label, amount: Number(a.amount) });
-    totalAdvances += Number(a.amount);
+    advancesOrdered.push({ day, label, amount: netAmount });
+    totalAdvances += netAmount;
   }
 
   // ── B/f Rules (deducted ONCE only) ────────────────────────────────────────────

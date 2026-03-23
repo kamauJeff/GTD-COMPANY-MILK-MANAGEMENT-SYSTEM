@@ -108,50 +108,80 @@ router.get('/statement', async (req, res) => {
     });
   }
 
-  // ── B/f Logic ──────────────────────────────────────────────────────────────────
-  // Mid-month: b/f = previous end-month negative (if they had one last month)
-  // End-month (paidOn15th): b/f = same-month mid-month negative (unpaid mid carry forward)
-  // End-month (full month): b/f = previous end-month negative
-  let bfBalance = 0;
+  // ── B/f Rules (deducted ONCE only) ────────────────────────────────────────────
+  // Rule 1: Mid-month (isMid=true):  b/f from previous end-month negative
+  // Rule 2: End-month paidOn15th:    b/f = same-month mid-month negative ONLY
+  //         (b/f was already taken at mid-month → NEVER add again at end-month)
+  // Rule 3: Full-month (paidOn15th=false): b/f from previous end-month negative
+  // Rule 4: Office b/f correction (FarmerDeduction with 'B/f') always overrides Rules 1-3
+  // IMPORTANT: For end-month of paidOn15th farmers — b/f is ZERO unless mid was negative
 
   const prevEndMonth = m === 1 ? 12 : m - 1;
   const prevEndYear  = m === 1 ? y - 1 : y;
 
-  const [bfDeduction, prevEndNeg, midNeg] = await Promise.all([
-    // Office-entered b/f correction (overrides everything)
-    prisma.farmerDeduction.findFirst({
-      where: { farmerId: farmer.id, periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
-      orderBy: { deductionDate: 'desc' },
-    }),
-    // Previous end-month negative payment
-    prisma.farmerPayment.findFirst({
-      where: { farmerId: farmer.id, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
-    }),
-    // Same-month mid-month negative (for paidOn15th end-month statement)
-    prisma.farmerPayment.findFirst({
-      where: { farmerId: farmer.id, periodMonth: m, periodYear: y, isMidMonth: true, netPay: { lt: 0 } },
-    }),
-  ]);
+  let bfBalance = 0;
 
-  if (bfDeduction) {
-    // Office correction always wins
-    bfBalance = Number(bfDeduction.amount);
-  } else if (!mid && farmer.paidOn15th && midNeg) {
-    // End-month for paidOn15th farmer: carry forward mid-month negative
-    bfBalance = Math.abs(Number(midNeg.netPay));
-  } else if (prevEndNeg) {
-    // All other cases: carry forward previous end-month negative
-    bfBalance = Math.abs(Number(prevEndNeg.netPay));
+  if (mid) {
+    // Mid-month: check office correction first, then prev end-month negative
+    const [bfCorr, prevNeg] = await Promise.all([
+      prisma.farmerDeduction.findFirst({
+        where: { farmerId: farmer.id, periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
+        orderBy: { deductionDate: 'desc' },
+      }),
+      prisma.farmerPayment.findFirst({
+        where: { farmerId: farmer.id, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
+      }),
+    ]);
+    if (bfCorr) bfBalance = Number(bfCorr.amount);
+    else if (prevNeg) bfBalance = Math.abs(Number(prevNeg.netPay));
+
+  } else if (farmer.paidOn15th) {
+    // End-month for paidOn15th: b/f ONLY if mid-month was negative (missed payment)
+    // If mid was paid normally → b/f = 0 (already deducted at mid)
+    const midPayment = await prisma.farmerPayment.findFirst({
+      where: { farmerId: farmer.id, periodMonth: m, periodYear: y, isMidMonth: true },
+      select: { netPay: true },
+    });
+    if (!midPayment) {
+      // Never paid mid → treat as full month, include b/f
+      const [bfCorr, prevNeg] = await Promise.all([
+        prisma.farmerDeduction.findFirst({
+          where: { farmerId: farmer.id, periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
+          orderBy: { deductionDate: 'desc' },
+        }),
+        prisma.farmerPayment.findFirst({
+          where: { farmerId: farmer.id, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
+        }),
+      ]);
+      if (bfCorr) bfBalance = Number(bfCorr.amount);
+      else if (prevNeg) bfBalance = Math.abs(Number(prevNeg.netPay));
+    } else if (Number(midPayment.netPay) < 0) {
+      // Mid was negative → carry that forward as b/f
+      bfBalance = Math.abs(Number(midPayment.netPay));
+    }
+    // else: mid was positive → b/f = 0, already deducted ✓
+
+  } else {
+    // Full-month farmer: check office correction first, then prev end-month negative
+    const [bfCorr, prevNeg] = await Promise.all([
+      prisma.farmerDeduction.findFirst({
+        where: { farmerId: farmer.id, periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
+        orderBy: { deductionDate: 'desc' },
+      }),
+      prisma.farmerPayment.findFirst({
+        where: { farmerId: farmer.id, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
+      }),
+    ]);
+    if (bfCorr) bfBalance = Number(bfCorr.amount);
+    else if (prevNeg) bfBalance = Math.abs(Number(prevNeg.netPay));
   }
 
-  // ── Other deductions (AI charges, water, etc.) ─────────────────────────────────
-  // For mid-month: only deductions marked as mid-month relevant
-  // For end-month: all non-b/f deductions
+  // ── Other deductions (AI charges, water, etc.) — EXCLUDE b/f entries ──────────
   const otherDeductions = deductions
     .filter(d => !d.reason.toLowerCase().includes('b/f'))
     .reduce((s, d) => s + Number(d.amount), 0);
 
-  // Build deductions list for display (advances + b/f + other)
+  // ── Build ordered deductions list for display ─────────────────────────────────
   const deductionsList: { label: string; amount: number }[] = [];
   if (bfBalance > 0) deductionsList.push({ label: 'Balance b/f', amount: bfBalance });
   for (const adv of advancesOrdered) deductionsList.push({ label: `Advance — ${adv.label}`, amount: adv.amount });

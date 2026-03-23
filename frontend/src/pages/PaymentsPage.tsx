@@ -20,6 +20,8 @@ export default function PaymentsPage() {
   const [showAdvanceForm, setShowAdvanceForm] = useState(false);
   const [advForm, setAdvForm]     = useState({ farmerCode: '', amount: '', notes: '', date: new Date().toISOString().split('T')[0] });
   const qc = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  async function handleRefresh() { setRefreshing(true); await qc.invalidateQueries(); setRefreshing(false); }
 
   const { data: routesData } = useQuery({ queryKey: ['routes'], queryFn: () => api.get('/api/payments/routes') });
   const routes: any[] = routesData?.data ?? [];
@@ -28,6 +30,7 @@ export default function PaymentsPage() {
   const { data: previewData, isLoading: previewLoading, refetch: refetchPreview } = useQuery({
     queryKey: ['payments-preview', month, year, isMidMonth, routeId],
     queryFn: () => api.get('/api/payments', { params: { month, year, isMidMonth, routeId: routeId || undefined } }),
+    staleTime: 0,
     enabled: tab === 'compute',
   });
   const preview = previewData?.data || {};
@@ -37,6 +40,7 @@ export default function PaymentsPage() {
   const { data: recordsData, isLoading: recordsLoading } = useQuery({
     queryKey: ['payments-records', month, year, isMidMonth, routeId, recordStatus],
     queryFn: () => api.get('/api/payments', { params: { month, year, isMidMonth, routeId: routeId || undefined, status: recordStatus } }),
+    staleTime: 0,
     enabled: tab === 'records',
   });
   const records = recordsData?.data || {};
@@ -47,6 +51,7 @@ export default function PaymentsPage() {
   const { data: advancesData } = useQuery({
     queryKey: ['advances', month, year, routeId],
     queryFn: () => api.get('/api/payments/advances', { params: { month, year, routeId: routeId || undefined } }),
+    staleTime: 0,
     enabled: tab === 'advances',
   });
   const advances: any[] = advancesData?.data ?? [];
@@ -80,15 +85,44 @@ export default function PaymentsPage() {
   });
   const summary = summaryData?.data || {};
 
+  // Step 1: Compute — generates PENDING records
   const runMut = useMutation({
     mutationFn: () => api.post('/api/payments/run', { month, year, isMidMonth, routeId: routeId || undefined }),
-    onSuccess: (r) => { showSuccess(`✅ ${r.data.message || `Generated ${r.data.created} payment records`}`); qc.invalidateQueries({ queryKey: ['payments'] }); qc.invalidateQueries({ queryKey: ['report-payment-mid'] }); qc.invalidateQueries({ queryKey: ['report-payment-end'] }); },
+    onSuccess: (r) => {
+      showSuccess(`✅ ${r.data.created} payment records computed — review then approve`);
+      qc.invalidateQueries({ queryKey: ['payments'] });
+    },
     onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
   });
 
+  // Step 2a: Approve per route
   const approveMut = useMutation({
     mutationFn: (rId?: number) => api.post('/api/payments/approve', { month, year, isMidMonth, routeId: rId || routeId || undefined }),
-    onSuccess: (r) => { showSuccess(`✅ ${r.data.approved} farmer${r.data.approved !== 1 ? 's' : ''} approved for payment`); qc.invalidateQueries({ queryKey: ['payments'] }); qc.invalidateQueries({ queryKey: ['report-payment-mid'] }); qc.invalidateQueries({ queryKey: ['report-payment-end'] }); },
+    onSuccess: (r) => {
+      showSuccess(`✅ ${r.data.approved} farmer${r.data.approved !== 1 ? 's' : ''} approved`);
+      qc.invalidateQueries({ queryKey: ['payments'] });
+      qc.invalidateQueries({ queryKey: ['report-payment-mid'] });
+      qc.invalidateQueries({ queryKey: ['report-payment-end'] });
+    },
+    onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
+  });
+
+  // Step 2b: Compute + Approve All in one click (simplified flow)
+  const computeApproveMut = useMutation({
+    mutationFn: async () => {
+      // 1. Generate records
+      const runRes = await api.post('/api/payments/run', { month, year, isMidMonth, routeId: routeId || undefined });
+      // 2. Immediately approve all
+      const approveRes = await api.post('/api/payments/approve', { month, year, isMidMonth, routeId: routeId || undefined });
+      return { created: runRes.data.created, approved: approveRes.data.approved };
+    },
+    onSuccess: (r) => {
+      showSuccess(`✅ ${r.approved} farmers approved`, `Computed ${r.created} records · Now go to Disbursement to pay`);
+      qc.invalidateQueries({ queryKey: ['payments'] });
+      qc.invalidateQueries({ queryKey: ['disburse-approved'] });
+      qc.invalidateQueries({ queryKey: ['report-payment-mid'] });
+      qc.invalidateQueries({ queryKey: ['report-payment-end'] });
+    },
     onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
   });
 
@@ -191,45 +225,83 @@ export default function PaymentsPage() {
       {/* ── COMPUTE TAB ── */}
       {tab === 'compute' && (
         <div className="space-y-4">
-      <div className="flex gap-2 flex-wrap items-center">
-            {/* KopoKopo balance */}
-            <div className={`px-3 py-2 rounded-lg text-sm font-medium border ${kopoBalance?.error ? 'bg-gray-50 text-gray-500 border-gray-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
-              💳 KopoKopo: {kopoBalance?.error ? 'Not connected' : `KES ${Number(kopoBalance?.amount || 0).toLocaleString()}`}
+
+          {/* 3-STEP FLOW */}
+          <div className="bg-gradient-to-r from-blue-50 to-green-50 dark:from-blue-900/20 dark:to-green-900/20 rounded-2xl border border-blue-200 dark:border-blue-700 p-4">
+            <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-3">Payment Process — 3 Steps</div>
+            <div className="flex gap-3 flex-wrap">
+
+              {/* Step 1 */}
+              <div className="flex-1 min-w-[180px] bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="w-6 h-6 bg-blue-600 text-white rounded-full text-xs font-bold flex items-center justify-center">1</span>
+                  <span className="font-semibold text-sm dark:text-gray-100">Compute</span>
+                </div>
+                <p className="text-xs text-gray-400 mb-3">Calculate litres, gross and deductions</p>
+                <button onClick={() => runMut.mutate()} disabled={runMut.isPending || computeApproveMut.isPending}
+                  className="w-full px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50">
+                  {runMut.isPending ? '⏳ Computing...' : '⚙️ Compute'}
+                </button>
+              </div>
+
+              <div className="flex items-center text-gray-300 dark:text-gray-600 text-xl">→</div>
+
+              {/* Step 2 */}
+              <div className="flex-1 min-w-[200px] bg-green-600 rounded-xl p-4 text-white">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="w-6 h-6 bg-white text-green-600 rounded-full text-xs font-bold flex items-center justify-center">2</span>
+                  <span className="font-semibold text-sm">Review & Approve</span>
+                </div>
+                <p className="text-xs text-green-100 mb-3">Review below, then approve all or by route</p>
+                <div className="flex gap-2">
+                  <button onClick={() => computeApproveMut.mutate()} disabled={computeApproveMut.isPending || runMut.isPending}
+                    className="flex-1 px-3 py-2 bg-white text-green-700 rounded-lg text-xs font-bold hover:bg-green-50 disabled:opacity-50">
+                    {computeApproveMut.isPending ? '⏳...' : '✅ Compute + Approve All'}
+                  </button>
+                  <button onClick={() => approveMut.mutate(undefined)} disabled={approveMut.isPending}
+                    className="px-3 py-2 bg-green-700 text-white rounded-lg text-xs font-medium hover:bg-green-800 disabled:opacity-50">
+                    {approveMut.isPending ? '...' : 'Approve All'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center text-gray-300 dark:text-gray-600 text-xl">→</div>
+
+              {/* Step 3 */}
+              <div className="flex-1 min-w-[180px] bg-white dark:bg-gray-900 rounded-xl border border-purple-200 dark:border-purple-700 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="w-6 h-6 bg-purple-600 text-white rounded-full text-xs font-bold flex items-center justify-center">3</span>
+                  <span className="font-semibold text-sm dark:text-gray-100">Disburse</span>
+                </div>
+                <p className="text-xs text-gray-400 mb-3">Send M-Pesa & download bank CSV</p>
+                <a href="/disbursement"
+                  className="block w-full px-3 py-2 bg-purple-600 text-white rounded-lg text-xs font-medium hover:bg-purple-700 text-center">
+                  💳 Go to Disbursement →
+                </a>
+              </div>
             </div>
-            <button onClick={() => runMut.mutate()} disabled={runMut.isPending}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-              {runMut.isPending ? 'Computing...' : '⚙️ Generate Records'}
-            </button>
-            {selectedFarmers.length > 0 && (
-              <button onClick={() => approveMut.mutate(undefined)} disabled={approveMut.isPending}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
-                ✅ Approve Selected ({selectedFarmers.length})
+            <div className="mt-3 flex gap-2 flex-wrap items-center">
+              <div className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${kopoBalance?.error ? 'bg-gray-50 text-gray-500 border-gray-200 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-400' : 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:border-green-700 dark:text-green-400'}`}>
+                💳 {kopoBalance?.error ? 'KopoKopo: Not connected' : `KopoKopo: KES ${Number(kopoBalance?.amount || 0).toLocaleString()}`}
+              </div>
+              <button onClick={() => downloadFile('/api/payments/kopokopo-export', `kopokopo-${isMidMonth?'mid':'end'}-${MONTHS[month-1]}-${year}.csv`)}
+                className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-xs hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-1 text-gray-600 dark:text-gray-300">
+                <Download size={11} /> KopoKopo CSV
               </button>
-            )}
-            <button onClick={() => {
-              if (!confirm('This will send M-Pesa payments via KopoKopo to all APPROVED farmers. Continue?')) return;
-              disburseMut.mutate(undefined);
-            }} disabled={disburseMut.isPending}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50">
-              {disburseMut.isPending ? '⏳ Sending...' : '🚀 Disburse via KopoKopo'}
-            </button>
-            <button onClick={() => downloadFile('/api/payments/kopokopo-export', `kopokopo-${isMidMonth?'mid':'end'}-${MONTHS[month-1]}-${year}.csv`)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-1.5">
-              <Download size={13} /> KopoKopo CSV
-            </button>
-            <button onClick={() => downloadFile('/api/payments/bank-export', `bank-${isMidMonth?'mid':'end'}-${MONTHS[month-1]}-${year}.csv`)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-1.5">
-              <Download size={13} /> Bank CSV
-            </button>
+              <button onClick={() => downloadFile('/api/payments/bank-export', `bank-${isMidMonth?'mid':'end'}-${MONTHS[month-1]}-${year}.csv`)}
+                className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-xs hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-1 text-gray-600 dark:text-gray-300">
+                <Download size={11} /> Bank CSV
+              </button>
+            </div>
           </div>
 
           {previewLoading ? (
-            <div className="bg-white rounded-xl border p-12 text-center text-gray-400">Computing payments...</div>
+            <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-12 text-center text-gray-400">Loading...</div>
           ) : routeGroups.length === 0 ? (
-            <div className="bg-white rounded-xl border p-12 text-center text-gray-400">
+            <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-12 text-center text-gray-400">
               <div className="text-3xl mb-3">💰</div>
               <div className="font-medium">No payment data yet</div>
-              <div className="text-sm mt-1">Click "Generate Payment Records" to compute from collections</div>
+              <div className="text-sm mt-1">Click <strong>Compute</strong> or <strong>Compute + Approve All</strong> above</div>
             </div>
           ) : (
             <div className="space-y-3">
@@ -238,30 +310,28 @@ export default function PaymentsPage() {
                 const routeFarmers: any[] = rg.farmers || [];
                 const allRouteSelected = routeFarmers.every((f: any) => selectedFarmers.includes(f.farmer.id));
                 return (
-                  <div key={rg.routeCode} className="bg-white rounded-xl border shadow-sm overflow-hidden">
-                    {/* Route header */}
-                    <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b cursor-pointer"
+                  <div key={rg.routeCode} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700 cursor-pointer"
                       onClick={() => setExpandedRoute(isExpanded ? null : rg.routeCode)}>
                       <div className="flex items-center gap-3">
                         <input type="checkbox" checked={allRouteSelected} onChange={() => toggleRoute(routeFarmers)}
                           onClick={e => e.stopPropagation()} className="w-4 h-4 accent-green-600" />
                         {isExpanded ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronRight size={16} className="text-gray-400" />}
                         <div>
-                          <span className="font-semibold text-gray-800">{rg.routeName}</span>
+                          <span className="font-semibold text-gray-800 dark:text-gray-100">{rg.routeName}</span>
                           <span className="text-xs text-gray-400 ml-2">{routeFarmers.length} farmers</span>
                           {rg.negativeCount > 0 && <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-600 text-xs rounded-full">{rg.negativeCount} negative</span>}
                         </div>
                       </div>
-                      <div className="flex items-center gap-4 text-sm">
+                      <div className="flex items-center gap-3 text-sm">
                         <span className="text-gray-500">{rg.totalLitres.toFixed(0)} L</span>
-                        <span className="text-green-700 font-bold">KES {rg.totalNet.toLocaleString(undefined, {maximumFractionDigits:0})}</span>
+                        <span className="text-green-700 dark:text-green-400 font-bold">KES {rg.totalNet.toLocaleString(undefined, {maximumFractionDigits:0})}</span>
                         <button onClick={e => { e.stopPropagation(); approveMut.mutate(rg.routeId); }}
                           className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700">
                           Approve Route
                         </button>
                       </div>
                     </div>
-
                     {/* Farmers table */}
                     {isExpanded && (
                       <table className="w-full text-sm">

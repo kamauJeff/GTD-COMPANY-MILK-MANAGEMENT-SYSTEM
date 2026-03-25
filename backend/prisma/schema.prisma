@@ -410,3 +410,10 @@ model LitresBalance {
 
   @@unique([day, month, year])
 }
+
+model SystemConfig {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+}

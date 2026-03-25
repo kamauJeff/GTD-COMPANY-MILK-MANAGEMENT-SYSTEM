@@ -223,6 +223,15 @@ export default function DisbursementPage() {
                 📥 Download Bank CSV ({bankPayments.length} farmers · KES {totalBank.toLocaleString()})
               </button>
             )}
+            <button onClick={async () => {
+                try {
+                  const r = await api.post('/api/notifications/payment-sms', { month, year, isMidMonth, routeId: routeId || undefined });
+                  showSuccess(`📱 ${r.data.message}`);
+                } catch (e: any) { showError(e?.response?.data?.error || 'SMS failed'); }
+              }}
+              className="flex items-center gap-2 px-5 py-3 bg-green-700 text-white rounded-xl font-medium hover:bg-green-800 text-sm">
+              📱 Notify Farmers via SMS
+            </button>
           </div>
           {disburseMut.isPending && (
             <div className="mt-3 text-xs text-gray-400 animate-pulse">Processing payments via KopoKopo API...</div>

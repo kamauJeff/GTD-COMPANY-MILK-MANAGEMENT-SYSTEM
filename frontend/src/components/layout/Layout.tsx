@@ -7,7 +7,7 @@ import {
   CreditCard, Briefcase, BarChart2, LogOut, Sparkles, Droplets,
   Menu, X, Moon, Sun, Wifi, WifiOff, RefreshCw, UserCircle,
   DollarSign, Send, FileText, ChevronDown, TrendingUp, Building2,
-  Receipt, BookOpen, Bell
+  Receipt, BookOpen, Bell, Cog
 } from 'lucide-react';
 import { AIWidget } from '../AIWidget';
 import { ToastContainer } from '../Toast';
@@ -82,10 +82,10 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: 'System',
-    icon: Settings,
+    icon: Cog,
     roles: ['ADMIN'],
     items: [
-      { to: '/settings', icon: Settings, label: 'Settings', roles: ['ADMIN'] },
+      { to: '/settings', icon: Cog, label: 'Settings', roles: ['ADMIN'] },
     ],
   },
 ];

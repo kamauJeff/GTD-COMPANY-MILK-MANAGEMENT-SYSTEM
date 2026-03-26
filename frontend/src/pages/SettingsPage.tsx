@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { showSuccess, showError } from '../components/Toast';
-import { RefreshCw, Bell, TrendingUp, MessageSquare, Save, Plus, Trash2, Phone } from 'lucide-react';
+import { RefreshCw, Bell, TrendingUp, MessageSquare, Save, Plus, Trash2 } from 'lucide-react';
 
 export default function SettingsPage() {
   const qc = useQueryClient();
@@ -180,7 +180,7 @@ export default function SettingsPage() {
                   Higher daily delivery = higher price per litre. Applied automatically at payment time.
                 </p>
               </div>
-              <button onClick={refetchTiers}
+              <button onClick={() => refetchTiers()}
                 className="p-2 text-gray-400 hover:text-green-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
                 <RefreshCw size={14} />
               </button>

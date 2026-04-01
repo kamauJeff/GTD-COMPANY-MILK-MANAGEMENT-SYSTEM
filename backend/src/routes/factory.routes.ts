@@ -47,7 +47,7 @@ router.get('/liquid/grader-check', async (req, res) => {
   next.setDate(next.getDate() + 1);
 
   const grader = await prisma.employee.findUnique({
-    where: { id: Number(graderId) },
+    where: { dairyId: req.dairyId!, id: Number(graderId) },
     include: { supervisedRoutes: { select: { id: true, code: true, name: true } } },
   });
   if (!grader) return res.status(404).json({ error: 'Grader not found' });
@@ -70,7 +70,7 @@ router.get('/liquid/grader-check', async (req, res) => {
       _count: { id: true },
     }),
     prisma.factoryReceipt.aggregate({
-      where: { graderId: Number(graderId), receivedAt: { gte: d, lt: next } },
+      where: { dairyId: req.dairyId!, graderId: Number(graderId), receivedAt: { gte: d, lt: next } },
       _sum: { litres: true },
     }),
     prisma.milkCollection.findMany({
@@ -87,7 +87,7 @@ router.get('/liquid/grader-check', async (req, res) => {
   let existingRecord = null;
   if (route) {
     existingRecord = await prisma.liquidRecord.findUnique({
-      where: { routeId_recordDate: { routeId: route.id, recordDate: d } },
+      where: { dairyId: req.dairyId!, routeId_recordDate: { routeId: route.id, recordDate: d } },
     }).catch(() => null);
   }
 
@@ -119,7 +119,7 @@ router.post('/liquid/grader-check', authorize('ADMIN', 'OFFICE'), async (req, re
   next.setDate(next.getDate() + 1);
 
   const grader = await prisma.employee.findUnique({
-    where: { id: Number(graderId) },
+    where: { dairyId: req.dairyId!, id: Number(graderId) },
     include: { supervisedRoutes: true },
   });
   if (!grader) return res.status(404).json({ error: 'Grader not found' });
@@ -162,7 +162,7 @@ router.post('/liquid/grader-check', authorize('ADMIN', 'OFFICE'), async (req, re
     const amount = Math.abs(variance) * 46;
     try {
       varianceRecord = await prisma.varianceRecord.create({
-        data: {
+        data: { dairyId: req.dairyId!,
           employeeId:  Number(graderId),
           type:        'GRADER_COLLECTION',
           amount,

@@ -38,9 +38,9 @@ router.post('/set-price', authorize('ADMIN', 'OFFICE'), async (req, res) => {
 });
 
 // GET /api/farmers/price-summary — show price distribution
-router.get('/price-summary', authorize('ADMIN', 'OFFICE'), async (_req, res) => {
+router.get('/price-summary', authorize('ADMIN', 'OFFICE'), async (req, res) => {
   const farmers = await prisma.farmer.findMany({
-    where: { isActive: true },
+    where: { dairyId: req.dairyId!, isActive: true },
     select: { pricePerLitre: true, route: { select: { name: true } } },
   });
 

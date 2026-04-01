@@ -47,66 +47,66 @@ router.get('/', async (req, res) => {
       // Today collections
       prisma.milkCollection.groupBy({
         by: ['routeId'],
-        where: { collectedAt: { gte: today, lt: tomorrow } },
+        where: { dairyId: req.dairyId!, collectedAt: { gte: today, lt: tomorrow } },
         _sum: { litres: true },
         _count: { id: true },
       }),
       // Factory receipts today
       prisma.factoryReceipt.aggregate({
-        where: { receivedAt: { gte: today, lt: tomorrow } },
+        where: { dairyId: req.dairyId!, receivedAt: { gte: today, lt: tomorrow } },
         _sum: { litres: true }, _count: true,
       }),
       // Deliveries today
       prisma.deliveryToShop.aggregate({
-        where: { deliveredAt: { gte: today, lt: tomorrow } },
+        where: { dairyId: req.dairyId!, deliveredAt: { gte: today, lt: tomorrow } },
         _sum: { litres: true }, _count: true,
       }),
       // Sales today
       prisma.shopSale.aggregate({
-        where: { saleDate: { gte: today, lt: tomorrow } },
+        where: { dairyId: req.dairyId!, saleDate: { gte: today, lt: tomorrow } },
         _sum: { litresSold: true, cashCollected: true, tillAmount: true }, _count: true,
       }),
       // Total active farmers
-      prisma.farmer.count({ where: { isActive: true } }),
+      prisma.farmer.count({ where: { dairyId: req.dairyId!, isActive: true } }),
       // paidOn15th farmers
-      prisma.farmer.count({ where: { isActive: true, paidOn15th: true } }),
+      prisma.farmer.count({ where: { dairyId: req.dairyId!, isActive: true, paidOn15th: true } }),
       // 1-15 collections this month (for mid-month readiness)
       prisma.milkCollection.groupBy({
         by: ['farmerId'],
-        where: { collectedAt: { gte: monthStart, lt: midEnd } },
+        where: { dairyId: req.dairyId!, collectedAt: { gte: monthStart, lt: midEnd } },
         _sum: { litres: true },
       }),
       // 16-end collections this month
       prisma.milkCollection.groupBy({
         by: ['farmerId'],
-        where: { collectedAt: { gte: midEnd, lt: monthEnd } },
+        where: { dairyId: req.dairyId!, collectedAt: { gte: midEnd, lt: monthEnd } },
         _sum: { litres: true },
       }),
       // 1-end collections this month (all)
       prisma.milkCollection.groupBy({
         by: ['farmerId'],
-        where: { collectedAt: { gte: monthStart, lt: monthEnd } },
+        where: { dairyId: req.dairyId!, collectedAt: { gte: monthStart, lt: monthEnd } },
         _sum: { litres: true },
       }),
       // Pending payments
       prisma.farmerPayment.groupBy({
         by: ['isMidMonth'],
-        where: { periodMonth: month, periodYear: year, status: 'PENDING' },
+        where: { dairyId: req.dairyId!, periodMonth: month, periodYear: year, status: 'PENDING' },
         _count: true, _sum: { netPay: true },
       }),
       // Approved payments
       prisma.farmerPayment.groupBy({
         by: ['isMidMonth'],
-        where: { periodMonth: month, periodYear: year, status: 'APPROVED' },
+        where: { dairyId: req.dairyId!, periodMonth: month, periodYear: year, status: 'APPROVED' },
         _count: true, _sum: { netPay: true },
       }),
       // Already paid mid-month
       prisma.farmerPayment.count({
-        where: { periodMonth: month, periodYear: year, isMidMonth: true, status: 'PAID' },
+        where: { dairyId: req.dairyId!, periodMonth: month, periodYear: year, isMidMonth: true, status: 'PAID' },
       }),
       // Already paid end-month
       prisma.farmerPayment.count({
-        where: { periodMonth: month, periodYear: year, isMidMonth: false, status: 'PAID' },
+        where: { dairyId: req.dairyId!, periodMonth: month, periodYear: year, isMidMonth: false, status: 'PAID' },
       }),
     ]);
 

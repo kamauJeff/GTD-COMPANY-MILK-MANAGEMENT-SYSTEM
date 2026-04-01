@@ -27,7 +27,7 @@ router.get('/monthly-grid', async (req, res) => {
   });
 
   const sales = await prisma.shopSale.findMany({
-    where: { saleDate: { gte: start, lt: end } },
+    where: { dairyId: req.dairyId!, saleDate: { gte: start, lt: end } },
     include: { shop: { select: { id: true } } },
   });
 
@@ -71,7 +71,7 @@ router.get('/daily-summary', async (req, res) => {
   const next = new Date(date); next.setDate(next.getDate() + 1);
 
   const sales = await prisma.shopSale.findMany({
-    where: { saleDate: { gte: date, lt: next } },
+    where: { dairyId: req.dairyId!, saleDate: { gte: date, lt: next } },
     include: { shop: { select: { name: true } } },
   });
 

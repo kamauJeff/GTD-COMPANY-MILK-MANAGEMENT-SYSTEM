@@ -10,9 +10,9 @@ export const getStats = async (req: Request, res: Response) => {
   const end = new Date(y, m, 0, 23, 59, 59);
 
   const [receipts, batches, deliveries] = await Promise.all([
-    prisma.factoryReceipt.aggregate({ where: { receivedAt: { gte: start, lte: end } }, _sum: { litres: true }, _count: true }),
-    prisma.pasteurizationBatch.aggregate({ where: { processedAt: { gte: start, lte: end } }, _sum: { inputLitres: true, outputLitres: true, lossLitres: true }, _count: true }),
-    prisma.deliveryToShop.aggregate({ where: { deliveredAt: { gte: start, lte: end } }, _sum: { litres: true }, _count: true }),
+    prisma.factoryReceipt.aggregate({ where: { dairyId: req.dairyId!, receivedAt: { gte: start, lte: end } }, _sum: { litres: true }, _count: true }),
+    prisma.pasteurizationBatch.aggregate({ where: { dairyId: req.dairyId!, processedAt: { gte: start, lte: end } }, _sum: { inputLitres: true, outputLitres: true, lossLitres: true }, _count: true }),
+    prisma.deliveryToShop.aggregate({ where: { dairyId: req.dairyId!, deliveredAt: { gte: start, lte: end } }, _sum: { litres: true }, _count: true }),
   ]);
 
   res.json({
@@ -31,13 +31,13 @@ export const getNextBatchNo = async (_req: Request, res: Response) => {
 
 // ─── Graders list ─────────────────────────────────────────────────────────────
 export const getGraders = async (_req: Request, res: Response) => {
-  const graders = await prisma.employee.findMany({ where: { role: 'GRADER', isActive: true }, select: { id: true, name: true, code: true }, orderBy: { name: 'asc' } });
+  const graders = await prisma.employee.findMany({ where: { dairyId: req.dairyId!, role: 'GRADER', isActive: true }, select: { id: true, name: true, code: true }, orderBy: { name: 'asc' } });
   res.json(graders);
 };
 
 // ─── Drivers list ─────────────────────────────────────────────────────────────
 export const getDrivers = async (_req: Request, res: Response) => {
-  const drivers = await prisma.employee.findMany({ where: { role: 'DRIVER', isActive: true }, select: { id: true, name: true, code: true }, orderBy: { name: 'asc' } });
+  const drivers = await prisma.employee.findMany({ where: { dairyId: req.dairyId!, role: 'DRIVER', isActive: true }, select: { id: true, name: true, code: true }, orderBy: { name: 'asc' } });
   res.json(drivers);
 };
 
@@ -60,7 +60,7 @@ export const getReceipts = async (req: Request, res: Response) => {
 export const createReceipt = async (req: Request, res: Response) => {
   const { graderId, litres, receivedAt, notes } = req.body;
   const receipt = await prisma.factoryReceipt.create({
-    data: { graderId: parseInt(graderId), litres, receivedAt: new Date(receivedAt), notes },
+    data: { dairyId: req.dairyId!, graderId: parseInt(graderId), litres, receivedAt: new Date(receivedAt), notes },
     include: { grader: { select: { id: true, name: true, code: true } } },
   });
   res.json(receipt);
@@ -89,7 +89,7 @@ export const getBatches = async (req: Request, res: Response) => {
 export const createBatch = async (req: Request, res: Response) => {
   const { batchNo, inputLitres, outputLitres, lossLitres, processedAt, qualityNotes } = req.body;
   const batch = await prisma.pasteurizationBatch.create({
-    data: { batchNo, inputLitres, outputLitres, lossLitres: lossLitres || 0, processedAt: new Date(processedAt), qualityNotes },
+    data: { dairyId: req.dairyId!, batchNo, inputLitres, outputLitres, lossLitres: lossLitres || 0, processedAt: new Date(processedAt), qualityNotes },
   });
   res.json(batch);
 };
@@ -130,7 +130,7 @@ export const getDeliveries = async (req: Request, res: Response) => {
 export const createDelivery = async (req: Request, res: Response) => {
   const { batchId, shopId, driverId, litres, sellingPrice, deliveredAt } = req.body;
   const delivery = await prisma.deliveryToShop.create({
-    data: { batchId: parseInt(batchId), shopId: parseInt(shopId), driverId: parseInt(driverId), litres, sellingPrice, deliveredAt: new Date(deliveredAt) },
+    data: { dairyId: req.dairyId!, batchId: parseInt(batchId), shopId: parseInt(shopId), driverId: parseInt(driverId), litres, sellingPrice, deliveredAt: new Date(deliveredAt) },
     include: { shop: { select: { id: true, name: true } }, driver: { select: { id: true, name: true } } },
   });
   res.json(delivery);
@@ -150,7 +150,7 @@ export const getLiquidGrid = async (req: Request, res: Response) => {
   const end = new Date(y, m, 0, 23, 59, 59);
 
   const records = await prisma.liquidRecord.findMany({
-    where: { recordDate: { gte: start, lte: end } },
+    where: { dairyId: req.dairyId!, recordDate: { gte: start, lte: end } },
     include: {
       route: { select: { id: true, code: true, name: true } },
       grader: { select: { id: true, name: true, code: true } },
@@ -207,7 +207,7 @@ export const deleteLiquid = async (req: Request, res: Response) => {
 export const chargeLoss = async (req: Request, res: Response) => {
   const { employeeId, amount, periodMonth, periodYear, description } = req.body;
   const record = await prisma.varianceRecord.create({
-    data: { employeeId: parseInt(employeeId), type: 'GRADER_COLLECTION', amount, recordDate: new Date(), periodMonth: parseInt(periodMonth), periodYear: parseInt(periodYear), description },
+    data: { dairyId: req.dairyId!, employeeId: parseInt(employeeId), type: 'GRADER_COLLECTION', amount, recordDate: new Date(), periodMonth: parseInt(periodMonth), periodYear: parseInt(periodYear), description },
   });
   res.json(record);
 };

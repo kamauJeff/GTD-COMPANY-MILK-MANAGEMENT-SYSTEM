@@ -27,7 +27,7 @@ router.get('/statement', async (req, res) => {
   const searchUpper = searchStr.toUpperCase();
 
   let farmer = await prisma.farmer.findFirst({
-    where: {
+    where: { dairyId: req.dairyId!,
       OR: [
         ...(farmerId ? [{ id: Number(farmerId) }] : []),
         ...(searchStr ? [
@@ -45,7 +45,7 @@ router.get('/statement', async (req, res) => {
     const numericPart = searchStr.replace(/\D/g, '');
     if (numericPart.length >= 3) {
       farmer = await prisma.farmer.findFirst({
-        where: { code: { contains: numericPart } },
+        where: { dairyId: req.dairyId!, code: { contains: numericPart } },
         include: { route: { select: { name: true } } },
       });
     }
@@ -87,15 +87,15 @@ router.get('/statement', async (req, res) => {
 
   const [collections, advances, deductions] = await Promise.all([
     prisma.milkCollection.findMany({
-      where: { farmerId: farmer.id, collectedAt: { gte: collStart, lt: collEnd } },
+      where: { dairyId: req.dairyId!, farmerId: farmer.id, collectedAt: { gte: collStart, lt: collEnd } },
       orderBy: { collectedAt: 'asc' },
     }),
     prisma.farmerAdvance.findMany({
-      where: { farmerId: farmer.id, advanceDate: { gte: advStart, lt: advEnd } },
+      where: { dairyId: req.dairyId!, farmerId: farmer.id, advanceDate: { gte: advStart, lt: advEnd } },
       orderBy: { advanceDate: 'asc' },
     }),
     prisma.farmerDeduction.findMany({
-      where: { farmerId: farmer.id, periodMonth: m, periodYear: y },
+      where: { dairyId: req.dairyId!, farmerId: farmer.id, periodMonth: m, periodYear: y },
     }),
   ]);
 
@@ -160,11 +160,11 @@ router.get('/statement', async (req, res) => {
     // Mid-month: check office correction first, then prev end-month negative
     const [bfCorr, prevNeg] = await Promise.all([
       prisma.farmerDeduction.findFirst({
-        where: { farmerId: farmer.id, periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
+        where: { dairyId: req.dairyId!, farmerId: farmer.id, periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
         orderBy: { deductionDate: 'desc' },
       }),
       prisma.farmerPayment.findFirst({
-        where: { farmerId: farmer.id, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
+        where: { dairyId: req.dairyId!, farmerId: farmer.id, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
       }),
     ]);
     if (bfCorr) bfBalance = Number(bfCorr.amount);
@@ -178,7 +178,7 @@ router.get('/statement', async (req, res) => {
     //   to determine if farmer would have been negative
 
     const midPayment = await prisma.farmerPayment.findFirst({
-      where: { farmerId: farmer.id, periodMonth: m, periodYear: y, isMidMonth: true },
+      where: { dairyId: req.dairyId!, farmerId: farmer.id, periodMonth: m, periodYear: y, isMidMonth: true },
       select: { netPay: true, status: true },
     });
 
@@ -192,11 +192,11 @@ router.get('/statement', async (req, res) => {
       // No mid payment record yet — compute from raw collections + advances
       const [midCollRaw, midAdvRaw] = await Promise.all([
         prisma.milkCollection.aggregate({
-          where: { farmerId: farmer.id, collectedAt: { gte: midStart, lt: midEnd } },
+          where: { dairyId: req.dairyId!, farmerId: farmer.id, collectedAt: { gte: midStart, lt: midEnd } },
           _sum: { litres: true },
         }),
         prisma.farmerAdvance.aggregate({
-          where: { farmerId: farmer.id, advanceDate: { gte: midStart, lt: midEnd } },
+          where: { dairyId: req.dairyId!, farmerId: farmer.id, advanceDate: { gte: midStart, lt: midEnd } },
           _sum: { amount: true },
         }),
       ]);
@@ -205,11 +205,11 @@ router.get('/statement', async (req, res) => {
       // Also include prev b/f in mid calculation
       const [bfCorr, prevNeg] = await Promise.all([
         prisma.farmerDeduction.findFirst({
-          where: { farmerId: farmer.id, periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
+          where: { dairyId: req.dairyId!, farmerId: farmer.id, periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
           orderBy: { deductionDate: 'desc' },
         }),
         prisma.farmerPayment.findFirst({
-          where: { farmerId: farmer.id, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
+          where: { dairyId: req.dairyId!, farmerId: farmer.id, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
         }),
       ]);
       const prevBf   = bfCorr ? Number(bfCorr.amount) : (prevNeg ? Math.abs(Number(prevNeg.netPay)) : 0);
@@ -225,11 +225,11 @@ router.get('/statement', async (req, res) => {
     // Full-month farmer: check office correction first, then prev end-month negative
     const [bfCorr, prevNeg] = await Promise.all([
       prisma.farmerDeduction.findFirst({
-        where: { farmerId: farmer.id, periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
+        where: { dairyId: req.dairyId!, farmerId: farmer.id, periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
         orderBy: { deductionDate: 'desc' },
       }),
       prisma.farmerPayment.findFirst({
-        where: { farmerId: farmer.id, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
+        where: { dairyId: req.dairyId!, farmerId: farmer.id, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
       }),
     ]);
     if (bfCorr) bfBalance = Number(bfCorr.amount);
@@ -297,7 +297,7 @@ router.put('/correct-by-farmer', authorize('ADMIN', 'OFFICE'), async (req, res) 
   if (!farmerCode || !collectedAt || !litres) return res.status(400).json({ error: 'farmerCode, collectedAt and litres are required' });
 
   const farmer = await prisma.farmer.findFirst({
-    where: {
+    where: { dairyId: req.dairyId!,
       OR: [
         { code: farmerCode.toUpperCase() },
         { name: { contains: farmerCode, mode: 'insensitive' } },
@@ -312,26 +312,26 @@ router.put('/correct-by-farmer', authorize('ADMIN', 'OFFICE'), async (req, res) 
 
   // Get current total before correction
   const existing = await prisma.milkCollection.findMany({
-    where: { farmerId: farmer.id, collectedAt: { gte: dayStart, lte: dayEnd } },
+    where: { dairyId: req.dairyId!, farmerId: farmer.id, collectedAt: { gte: dayStart, lte: dayEnd } },
   });
   const previousTotal = existing.reduce((s, r) => s + Number(r.litres), 0);
 
   // DELETE all records for this farmer on this day
   await prisma.milkCollection.deleteMany({
-    where: { farmerId: farmer.id, collectedAt: { gte: dayStart, lte: dayEnd } },
+    where: { dairyId: req.dairyId!, farmerId: farmer.id, collectedAt: { gte: dayStart, lte: dayEnd } },
   });
 
   // Get graderId from route
   let gId = farmer.route?.supervisorId;
   if (!gId) {
-    const route = await prisma.route.findUnique({ where: { id: farmer.routeId }, select: { supervisorId: true } });
+    const route = await prisma.route.findUnique({ where: { dairyId: req.dairyId!, id: farmer.routeId }, select: { supervisorId: true } });
     gId = route?.supervisorId;
   }
   if (!gId) return res.status(400).json({ error: 'No grader assigned to this route' });
 
   // CREATE single clean record with correct litres
   const corrected = await prisma.milkCollection.create({
-    data: {
+    data: { dairyId: req.dairyId!,
       farmerId:    farmer.id,
       routeId:     farmer.routeId,
       graderId:    Number(gId),
@@ -371,7 +371,7 @@ router.post('/manual', authorize('ADMIN', 'OFFICE'), async (req: any, res) => {
   if (!farmerCode || !litres) return res.status(400).json({ error: 'farmerCode and litres are required' });
 
   const farmer = await prisma.farmer.findFirst({
-    where: {
+    where: { dairyId: req.dairyId!,
       OR: [
         { code: farmerCode.toUpperCase() },
         { name: { contains: farmerCode, mode: 'insensitive' } },
@@ -384,7 +384,7 @@ router.post('/manual', authorize('ADMIN', 'OFFICE'), async (req: any, res) => {
   const rId = routeId ? Number(routeId) : farmer.routeId;
   let gId = farmer.route?.supervisorId;
   if (!gId) {
-    const route = await prisma.route.findUnique({ where: { id: rId }, select: { supervisorId: true } });
+    const route = await prisma.route.findUnique({ where: { dairyId: req.dairyId!, id: rId }, select: { supervisorId: true } });
     gId = route?.supervisorId;
   }
   if (!gId) gId = req.user?.sub || req.user?.id;
@@ -396,17 +396,17 @@ router.post('/manual', authorize('ADMIN', 'OFFICE'), async (req: any, res) => {
 
   // DELETE all existing records for this farmer on this day (prevents duplicates)
   const existing = await prisma.milkCollection.findMany({
-    where: { farmerId: farmer.id, collectedAt: { gte: dayStart, lte: dayEnd } },
+    where: { dairyId: req.dairyId!, farmerId: farmer.id, collectedAt: { gte: dayStart, lte: dayEnd } },
   });
   if (existing.length > 0) {
     await prisma.milkCollection.deleteMany({
-      where: { farmerId: farmer.id, collectedAt: { gte: dayStart, lte: dayEnd } },
+      where: { dairyId: req.dairyId!, farmerId: farmer.id, collectedAt: { gte: dayStart, lte: dayEnd } },
     });
   }
 
   // CREATE single clean record
   const collection = await prisma.milkCollection.create({
-    data: {
+    data: { dairyId: req.dairyId!,
       farmerId:    farmer.id,
       routeId:     rId,
       graderId:    Number(gId),
@@ -426,7 +426,7 @@ router.post('/advance/correct', authorize('ADMIN', 'OFFICE'), async (req, res) =
   let fId = farmerId;
   if (!fId && farmerCode) {
     const farmer = await prisma.farmer.findFirst({
-      where: {
+      where: { dairyId: req.dairyId!,
         OR: [
           { code: farmerCode.toUpperCase() },
           { name: { contains: farmerCode, mode: 'insensitive' } },
@@ -447,10 +447,10 @@ router.post('/advance/correct', authorize('ADMIN', 'OFFICE'), async (req, res) =
   if (isBf) {
     // B/f: always replace (set the exact amount)
     await prisma.farmerDeduction.deleteMany({
-      where: { farmerId: Number(fId), periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
+      where: { dairyId: req.dairyId!, farmerId: Number(fId), periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
     });
     const result = await prisma.farmerDeduction.create({
-      data: { farmerId: Number(fId), amount: Number(amount), reason: notes || 'B/f correction', deductionDate: now, periodMonth: m, periodYear: y },
+      data: { dairyId: req.dairyId!, farmerId: Number(fId), amount: Number(amount), reason: notes || 'B/f correction', deductionDate: now, periodMonth: m, periodYear: y },
       include: { farmer: { select: { code: true, name: true } } },
     });
     return res.status(201).json({ ...result, type: 'bf_correction', replaced: true });
@@ -462,22 +462,22 @@ router.post('/advance/correct', authorize('ADMIN', 'OFFICE'), async (req, res) =
   const dayEnd   = new Date(advDay); dayEnd.setHours(23,59,59,999);
 
   const existingAdvances = await prisma.farmerAdvance.findMany({
-    where: { farmerId: Number(fId), advanceDate: { gte: dayStart, lte: dayEnd } },
+    where: { dairyId: req.dairyId!, farmerId: Number(fId), advanceDate: { gte: dayStart, lte: dayEnd } },
   });
   const existingTotal = existingAdvances.reduce((s, a) => s + Number(a.amount), 0);
 
   if (isReplace) {
     // Delete existing for this day and set fresh
-    await prisma.farmerAdvance.deleteMany({ where: { farmerId: Number(fId), advanceDate: { gte: dayStart, lte: dayEnd } } });
+    await prisma.farmerAdvance.deleteMany({ where: { dairyId: req.dairyId!, farmerId: Number(fId), advanceDate: { gte: dayStart, lte: dayEnd } } });
     const result = await prisma.farmerAdvance.create({
-      data: { farmerId: Number(fId), amount: Number(amount), advanceDate: advDay, notes: notes || 'Office correction (replaced)' },
+      data: { dairyId: req.dairyId!, farmerId: Number(fId), amount: Number(amount), advanceDate: advDay, notes: notes || 'Office correction (replaced)' },
       include: { farmer: { select: { code: true, name: true } } },
     });
     return res.status(201).json({ ...result, type: 'advance', previousTotal: existingTotal, newTotal: Number(amount), breakdown: `${Number(amount)} (replaced ${existingTotal})` });
   } else {
     // ADD to existing
     const result = await prisma.farmerAdvance.create({
-      data: { farmerId: Number(fId), amount: Number(amount), advanceDate: advDay, notes: notes || `Added to existing ${existingTotal}` },
+      data: { dairyId: req.dairyId!, farmerId: Number(fId), amount: Number(amount), advanceDate: advDay, notes: notes || `Added to existing ${existingTotal}` },
       include: { farmer: { select: { code: true, name: true } } },
     });
     const newTotal = existingTotal + Number(amount);

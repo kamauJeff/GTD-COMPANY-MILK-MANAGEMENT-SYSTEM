@@ -44,11 +44,11 @@ export async function getCollections(req: Request, res: Response) {
 export async function createCollection(req: Request, res: Response) {
   const { farmerId, litres, collectedAt } = req.body;
 
-  const farmer = await prisma.farmer.findUnique({ where: { id: farmerId } });
+  const farmer = await prisma.farmer.findUnique({ where: { dairyId: req.dairyId!, id: farmerId } });
   if (!farmer) throw new AppError(404, 'Farmer not found');
 
   const collection = await prisma.milkCollection.create({
-    data: {
+    data: { dairyId: req.dairyId!,
       farmerId,
       routeId: farmer.routeId,
       graderId: req.user!.sub,
@@ -75,7 +75,7 @@ export async function batchSync(req: Request, res: Response) {
 
   for (const r of records) {
     try {
-      const farmer = await prisma.farmer.findUnique({ where: { id: r.farmerId } });
+      const farmer = await prisma.farmer.findUnique({ where: { dairyId: req.dairyId!, id: r.farmerId } });
       if (!farmer) { results.failed++; results.errors.push(`Unknown farmer ${r.farmerId}`); continue; }
 
       const collectedAt = new Date(r.collectedAt);
@@ -84,7 +84,7 @@ export async function batchSync(req: Request, res: Response) {
       const dayEnd   = new Date(collectedAt); dayEnd.setHours(23,59,59,999);
 
       const existing = await prisma.milkCollection.findFirst({
-        where: { farmerId: r.farmerId, collectedAt: { gte: dayStart, lte: dayEnd } },
+        where: { dairyId: req.dairyId!, farmerId: r.farmerId, collectedAt: { gte: dayStart, lte: dayEnd } },
         orderBy: { collectedAt: 'desc' },
       });
 
@@ -98,7 +98,7 @@ export async function batchSync(req: Request, res: Response) {
       } else {
         // CREATE new record
         await prisma.milkCollection.create({
-          data: {
+          data: { dairyId: req.dairyId!,
             farmerId:    r.farmerId,
             routeId:     farmer.routeId,
             graderId:    (req.user as any).sub,
@@ -130,7 +130,7 @@ export async function getDailyRouteTotals(req: Request, res: Response) {
 
   const totals = await prisma.milkCollection.groupBy({
     by: ['routeId'],
-    where: { collectedAt: { gte: d, lt: next } },
+    where: { dairyId: req.dairyId!, collectedAt: { gte: d, lt: next } },
     _sum: { litres: true },
     _count: { farmerId: true },
   });
@@ -159,7 +159,7 @@ export async function getGraderDailyTotal(req: Request, res: Response) {
 
   // Get grader's route
   const grader = await prisma.employee.findUnique({
-    where: { id: Number(graderId) },
+    where: { dairyId: req.dairyId!, id: Number(graderId) },
     include: { supervisedRoutes: { select: { id: true, code: true, name: true } } },
   });
   if (!grader) throw new AppError(404, 'Grader not found');
@@ -168,7 +168,7 @@ export async function getGraderDailyTotal(req: Request, res: Response) {
 
   // Total collected by this grader on this date
   const agg = await prisma.milkCollection.aggregate({
-    where: {
+    where: { dairyId: req.dairyId!,
       graderId: Number(graderId),
       collectedAt: { gte: d, lt: next },
     },
@@ -178,7 +178,7 @@ export async function getGraderDailyTotal(req: Request, res: Response) {
 
   // Also get per-farmer breakdown
   const breakdown = await prisma.milkCollection.findMany({
-    where: { graderId: Number(graderId), collectedAt: { gte: d, lt: next } },
+    where: { dairyId: req.dairyId!, graderId: Number(graderId), collectedAt: { gte: d, lt: next } },
     include: { farmer: { select: { code: true, name: true } } },
     orderBy: { collectedAt: 'asc' },
   });
@@ -344,7 +344,7 @@ export async function getJournalGridFull(req: Request, res: Response) {
       orderBy: { collectedAt: 'asc' },
     }),
     prisma.farmerAdvance.findMany({
-      where: { advanceDate: { gte: start, lt: end } },
+      where: { dairyId: req.dairyId!, advanceDate: { gte: start, lt: end } },
       include: { farmer: { select: { id: true, code: true } } },
     }),
   ]);
@@ -387,11 +387,11 @@ export async function getJournalGridFull(req: Request, res: Response) {
 
   const [prevPayments, bfDeductions] = await Promise.all([
     prisma.farmerPayment.findMany({
-      where: { periodMonth: prevMonth, periodYear: prevYear, netPay: { lt: 0 }, status: 'PAID' },
+      where: { dairyId: req.dairyId!, periodMonth: prevMonth, periodYear: prevYear, netPay: { lt: 0 }, status: 'PAID' },
       select: { farmerId: true, netPay: true },
     }),
     prisma.farmerDeduction.findMany({
-      where: {
+      where: { dairyId: req.dairyId!,
         periodMonth: m, periodYear: y,
         reason: { contains: 'B/f' },
       },

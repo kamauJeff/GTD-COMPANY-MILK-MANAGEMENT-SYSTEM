@@ -10,7 +10,7 @@ router.use(authenticate);
 // GET /api/employees/my-route — returns the grader's assigned route + farmers
 router.get('/my-route', async (req, res) => {
   const employee = await prisma.employee.findUnique({
-    where: { id: req.user!.sub },
+    where: { dairyId: req.dairyId!, id: req.user!.sub },
     include: { supervisedRoutes: { include: { farmers: { where: { isActive: true }, orderBy: { name: 'asc' } } } } },
   });
   if (!employee) return res.status(404).json({ error: 'Not found' });
@@ -29,7 +29,7 @@ router.get('/', async (req, res) => {
 router.post('/', authorize('ADMIN'), async (req, res) => {
   const { password, ...data } = req.body;
   const passwordHash = await bcrypt.hash(password || 'Gutoria@2024', 12);
-  const employee = await prisma.employee.create({ data: { ...data, passwordHash } as any });
+  const employee = await prisma.employee.create({ data: { dairyId: req.dairyId!, ...data, passwordHash } as any });
   res.status(201).json(employee);
 });
 
@@ -44,7 +44,7 @@ export default router;
 router.get('/me', async (req: any, res) => {
   try {
     const employee = await prisma.employee.findUnique({
-      where: { id: Number(req.user.sub || req.user.id) },
+      where: { dairyId: req.dairyId!, id: Number(req.user.sub || req.user.id) },
       select: { id: true, code: true, name: true, phone: true, role: true },
     });
     if (!employee) return res.status(404).json({ error: 'Employee not found' });
@@ -75,7 +75,7 @@ router.put('/me/password', async (req: any, res) => {
     const { current, newPassword } = req.body;
     if (!current || !newPassword) return res.status(400).json({ error: 'Both current and new password are required' });
     if (newPassword.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
-    const employee = await prisma.employee.findUnique({ where: { id: Number(req.user.sub || req.user.id) } });
+    const employee = await prisma.employee.findUnique({ where: { dairyId: req.dairyId!, id: Number(req.user.sub || req.user.id) } });
     if (!employee) return res.status(404).json({ error: 'Employee not found' });
     if (!employee.passwordHash) return res.status(400).json({ error: 'No password set on this account' });
     const valid = await bcrypt.compare(current, employee.passwordHash);

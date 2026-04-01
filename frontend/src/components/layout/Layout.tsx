@@ -80,7 +80,7 @@ const PAGE_TITLES: Record<string, string> = {
 };
 
 export default function Layout() {
-  const { user, logout } = useAuthStore();
+  const { user, dairy, logout } = useAuthStore();
   const { dark, toggle } = useThemeStore();
   const navigate = useNavigate();
   const location = useLocation();
@@ -147,7 +147,7 @@ export default function Layout() {
               🐄
             </div>
             <div>
-              <div className="text-sm font-bold text-white tracking-tight">Gutoria Dairies</div>
+              <div className="text-sm font-bold text-white tracking-tight">{dairy?.name || 'Dairy System'}</div>
               <div className="text-[10px] text-gray-500 mt-0.5">Management System</div>
             </div>
           </div>

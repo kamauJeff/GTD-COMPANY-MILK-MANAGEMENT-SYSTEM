@@ -17,7 +17,7 @@ export default function LoginPage() {
     setError(''); setLoading(true);
     try {
       const { data } = await authApi.login(code, password);
-      setAuth(data.token, data.employee);
+      setAuth(data.token, data.employee, data.dairy);
       navigate('/');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Login failed');
@@ -30,7 +30,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-100">
       <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="text-4xl mb-2">ðŸ„</div>
+          <div className="text-4xl mb-2">🐄</div>
           <h1 className="text-2xl font-bold text-gray-800">Gutoria Dairies</h1>
           <p className="text-sm text-gray-500 mt-1">Management System</p>
         </div>
@@ -53,7 +53,7 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-              placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+              placeholder="••••••••"
               required
             />
           </div>
@@ -65,11 +65,10 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2 rounded-lg transition-colors disabled:opacity-60"
           >
-            {loading ? 'Signing inâ€¦' : 'Sign in'}
+            {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
       </div>
     </div>
   );
 }
-

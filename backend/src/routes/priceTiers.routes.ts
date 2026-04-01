@@ -6,9 +6,9 @@ const router = Router();
 router.use(authenticate);
 
 // GET /api/price-tiers — list configured tiers
-router.get('/', authorize('ADMIN','OFFICE'), async (_req, res) => {
+router.get('/', authorize('ADMIN','OFFICE'), async (req, res) => {
   // Read from DB config or return defaults
-  const config = await prisma.systemConfig.findFirst({ where: { key: 'price_tiers' } }).catch(() => null);
+  const config = await prisma.systemConfig.findFirst({ where: { dairyId: req.dairyId!, key: 'price_tiers' } }).catch(() => null);
   const tiers = config ? JSON.parse(config.value) : [
     { minLitresPerDay: 0,   maxLitresPerDay: 49,  pricePerLitre: 46 },
     { minLitresPerDay: 50,  maxLitresPerDay: 99,  pricePerLitre: 50 },

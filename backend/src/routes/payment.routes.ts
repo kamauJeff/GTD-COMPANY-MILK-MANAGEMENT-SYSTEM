@@ -30,7 +30,7 @@ function periodDates(month: number, year: number, isMidMonth: boolean) {
 
 async function computeFarmerPayment(farmerId: number, month: number, year: number, isMidMonth: boolean) {
   const farmer = await prisma.farmer.findUnique({
-    where: { id: farmerId },
+    where: { dairyId: req.dairyId!, id: farmerId },
     include: { route: { select: { id: true, name: true, code: true } } },
   });
   if (!farmer) return null;
@@ -41,7 +41,7 @@ async function computeFarmerPayment(farmerId: number, month: number, year: numbe
   let treatAsFull = false;
   if (!isMidMonth && farmer.paidOn15th) {
     const midPayment = await prisma.farmerPayment.findFirst({
-      where: { farmerId, periodMonth: month, periodYear: year, isMidMonth: true },
+      where: { dairyId: req.dairyId!, farmerId, periodMonth: month, periodYear: year, isMidMonth: true },
       select: { netPay: true, id: true },
     });
     // No mid-month record OR negative mid-month → treat as full-month
@@ -80,7 +80,7 @@ async function computeFarmerPayment(farmerId: number, month: number, year: numbe
     const prevEndYear  = month === 1 ? year - 1 : year;
     // Check office b/f correction first
     const bfDeduction = await prisma.farmerDeduction.findFirst({
-      where: { farmerId, periodMonth: month, periodYear: year, reason: { contains: 'B/f' } },
+      where: { dairyId: req.dairyId!, farmerId, periodMonth: month, periodYear: year, reason: { contains: 'B/f' } },
       orderBy: { deductionDate: 'desc' },
     });
     if (bfDeduction) {
@@ -88,7 +88,7 @@ async function computeFarmerPayment(farmerId: number, month: number, year: numbe
     } else {
       // Previous end-month negative
       const prevNeg = await prisma.farmerPayment.findFirst({
-        where: { farmerId, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
+        where: { dairyId: req.dairyId!, farmerId, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
       });
       if (prevNeg) bfBalance = Math.abs(Number(prevNeg.netPay));
     }
@@ -96,9 +96,9 @@ async function computeFarmerPayment(farmerId: number, month: number, year: numbe
 
   // ── Fetch data ──────────────────────────────────────────────────────────────
   const [collAgg, advAgg, dedAgg] = await Promise.all([
-    prisma.milkCollection.aggregate({ where: { farmerId, collectedAt: { gte: collStart, lt: collEnd } }, _sum: { litres: true } }),
-    prisma.farmerAdvance.aggregate({ where: { farmerId, advanceDate: { gte: advStart, lt: advEnd } }, _sum: { amount: true } }),
-    prisma.farmerDeduction.aggregate({ where: { farmerId, periodMonth: month, periodYear: year, reason: { not: { contains: 'B/f' } } }, _sum: { amount: true } }),
+    prisma.milkCollection.aggregate({ where: { dairyId: req.dairyId!, farmerId, collectedAt: { gte: collStart, lt: collEnd } }, _sum: { litres: true } }),
+    prisma.farmerAdvance.aggregate({ where: { dairyId: req.dairyId!, farmerId, advanceDate: { gte: advStart, lt: advEnd } }, _sum: { amount: true } }),
+    prisma.farmerDeduction.aggregate({ where: { dairyId: req.dairyId!, farmerId, periodMonth: month, periodYear: year, reason: { not: { contains: 'B/f' } } }, _sum: { amount: true } }),
   ]);
 
   const totalLitres    = Number(collAgg._sum.litres || 0);
@@ -162,12 +162,12 @@ router.get('/', async (req, res) => {
     const [midCollAgg, endCollAgg] = await Promise.all([
       midFarmerIds.length > 0 ? prisma.milkCollection.groupBy({
         by: ['farmerId'],
-        where: { farmerId: { in: midFarmerIds }, collectedAt: { gte: mid ? midStart15 : midStart15, lt: mid ? midEnd15 : fullEnd } },
+        where: { dairyId: req.dairyId!, farmerId: { in: midFarmerIds }, collectedAt: { gte: mid ? midStart15 : midStart15, lt: mid ? midEnd15 : fullEnd } },
         _sum: { litres: true },
       }) : Promise.resolve([]),
       endFarmerIds.length > 0 ? prisma.milkCollection.groupBy({
         by: ['farmerId'],
-        where: { farmerId: { in: endFarmerIds }, collectedAt: { gte: endStart16, lt: fullEnd } },
+        where: { dairyId: req.dairyId!, farmerId: { in: endFarmerIds }, collectedAt: { gte: endStart16, lt: fullEnd } },
         _sum: { litres: true },
       }) : Promise.resolve([]),
     ]);
@@ -206,9 +206,9 @@ router.get('/', async (req, res) => {
 
   const [farmers, collections, advances, deductions] = await Promise.all([
     prisma.farmer.findMany({ where: whereRoute, include: { route: { select: { id: true, code: true, name: true } } } }),
-    prisma.milkCollection.groupBy({ by: ['farmerId'], where: { collectedAt: { gte: start, lt: end } }, _sum: { litres: true } }),
-    prisma.farmerAdvance.groupBy({ by: ['farmerId'], where: { advanceDate: { gte: start, lt: end } }, _sum: { amount: true } }),
-    prisma.farmerDeduction.groupBy({ by: ['farmerId'], where: { periodMonth: m, periodYear: y }, _sum: { amount: true } }),
+    prisma.milkCollection.groupBy({ by: ['farmerId'], where: { dairyId: req.dairyId!, collectedAt: { gte: start, lt: end } }, _sum: { litres: true } }),
+    prisma.farmerAdvance.groupBy({ by: ['farmerId'], where: { dairyId: req.dairyId!, advanceDate: { gte: start, lt: end } }, _sum: { amount: true } }),
+    prisma.farmerDeduction.groupBy({ by: ['farmerId'], where: { dairyId: req.dairyId!, periodMonth: m, periodYear: y }, _sum: { amount: true } }),
   ]);
 
   const collMap = new Map(collections.map(c => [c.farmerId, Number(c._sum.litres || 0)]));
@@ -272,7 +272,7 @@ router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
     const treatAsFullIds = new Set<number>();
     if (!mid) {
       const midPayments = await prisma.farmerPayment.findMany({
-        where: { farmerId: { in: farmerIds }, periodMonth: m, periodYear: y, isMidMonth: true },
+        where: { dairyId: req.dairyId!, farmerId: { in: farmerIds }, periodMonth: m, periodYear: y, isMidMonth: true },
         select: { farmerId: true, netPay: true },
       });
       const midMap = new Map(midPayments.map(p => [p.farmerId, Number(p.netPay)]));
@@ -287,9 +287,9 @@ router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
     // ── Fetch all collections and advances sequentially (avoids connection pool exhaustion) ──
     // Collections
     const [midColl, endColl, fullColl] = await Promise.all([
-      prisma.milkCollection.groupBy({ by: ['farmerId'], where: { farmerId: { in: farmerIds }, collectedAt: { gte: midStart, lt: midEnd } }, _sum: { litres: true } }),
-      prisma.milkCollection.groupBy({ by: ['farmerId'], where: { farmerId: { in: farmerIds }, collectedAt: { gte: endStart, lt: fullEnd } }, _sum: { litres: true } }),
-      prisma.milkCollection.groupBy({ by: ['farmerId'], where: { farmerId: { in: farmerIds }, collectedAt: { gte: midStart, lt: fullEnd } }, _sum: { litres: true } }),
+      prisma.milkCollection.groupBy({ by: ['farmerId'], where: { dairyId: req.dairyId!, farmerId: { in: farmerIds }, collectedAt: { gte: midStart, lt: midEnd } }, _sum: { litres: true } }),
+      prisma.milkCollection.groupBy({ by: ['farmerId'], where: { dairyId: req.dairyId!, farmerId: { in: farmerIds }, collectedAt: { gte: endStart, lt: fullEnd } }, _sum: { litres: true } }),
+      prisma.milkCollection.groupBy({ by: ['farmerId'], where: { dairyId: req.dairyId!, farmerId: { in: farmerIds }, collectedAt: { gte: midStart, lt: fullEnd } }, _sum: { litres: true } }),
     ]);
     const midCollMap  = new Map(midColl.map(c  => [c.farmerId, Number(c._sum.litres  || 0)]));
     const endCollMap  = new Map(endColl.map(c  => [c.farmerId, Number(c._sum.litres  || 0)]));
@@ -297,9 +297,9 @@ router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
 
     // Advances
     const [midAdv, endAdv, fullAdv] = await Promise.all([
-      prisma.farmerAdvance.groupBy({ by: ['farmerId'], where: { farmerId: { in: farmerIds }, advanceDate: { gte: midStart, lt: midEnd } }, _sum: { amount: true } }),
-      prisma.farmerAdvance.groupBy({ by: ['farmerId'], where: { farmerId: { in: farmerIds }, advanceDate: { gte: endStart, lt: fullEnd } }, _sum: { amount: true } }),
-      prisma.farmerAdvance.groupBy({ by: ['farmerId'], where: { farmerId: { in: farmerIds }, advanceDate: { gte: midStart, lt: fullEnd } }, _sum: { amount: true } }),
+      prisma.farmerAdvance.groupBy({ by: ['farmerId'], where: { dairyId: req.dairyId!, farmerId: { in: farmerIds }, advanceDate: { gte: midStart, lt: midEnd } }, _sum: { amount: true } }),
+      prisma.farmerAdvance.groupBy({ by: ['farmerId'], where: { dairyId: req.dairyId!, farmerId: { in: farmerIds }, advanceDate: { gte: endStart, lt: fullEnd } }, _sum: { amount: true } }),
+      prisma.farmerAdvance.groupBy({ by: ['farmerId'], where: { dairyId: req.dairyId!, farmerId: { in: farmerIds }, advanceDate: { gte: midStart, lt: fullEnd } }, _sum: { amount: true } }),
     ]);
     const midAdvMap  = new Map(midAdv.map(a  => [a.farmerId, Number(a._sum.amount || 0)]));
     const endAdvMap  = new Map(endAdv.map(a  => [a.farmerId, Number(a._sum.amount || 0)]));
@@ -309,11 +309,11 @@ router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
     const [otherDeds, bfCorrections] = await Promise.all([
       prisma.farmerDeduction.groupBy({
         by: ['farmerId'],
-        where: { farmerId: { in: farmerIds }, periodMonth: m, periodYear: y, reason: { not: { contains: 'B/f' } } },
+        where: { dairyId: req.dairyId!, farmerId: { in: farmerIds }, periodMonth: m, periodYear: y, reason: { not: { contains: 'B/f' } } },
         _sum: { amount: true },
       }),
       prisma.farmerDeduction.findMany({
-        where: { farmerId: { in: farmerIds }, periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
+        where: { dairyId: req.dairyId!, farmerId: { in: farmerIds }, periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
         select: { farmerId: true, amount: true },
       }),
     ]);
@@ -334,7 +334,7 @@ router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
       const prevEndMonth = m === 1 ? 12 : m - 1;
       const prevEndYear  = m === 1 ? y - 1 : y;
       const prevNegatives = await prisma.farmerPayment.findMany({
-        where: { farmerId: { in: noCorrection }, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
+        where: { dairyId: req.dairyId!, farmerId: { in: noCorrection }, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
         select: { farmerId: true, netPay: true },
       });
       for (const p of prevNegatives) bfMap.set(p.farmerId, Math.abs(Number(p.netPay)));
@@ -378,7 +378,7 @@ router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
     // We use createMany (skipDuplicates) + updateMany in 2 queries instead of N upserts
     // 1. Delete existing PENDING records for this period (safe to regenerate)
     await prisma.farmerPayment.deleteMany({
-      where: {
+      where: { dairyId: req.dairyId!,
         farmerId: { in: records.map(r => r.farmerId) },
         periodMonth: m, periodYear: y, isMidMonth: mid,
         status: 'PENDING',  // only delete PENDING, never touch APPROVED/PAID
@@ -414,7 +414,7 @@ router.post('/approve', authorize('ADMIN', 'OFFICE'), async (req, res) => {
 router.post('/mark-paid', authorize('ADMIN', 'OFFICE'), async (req, res) => {
   const { paymentIds, kopokopoRef } = req.body;
   const result = await prisma.farmerPayment.updateMany({
-    where: { id: { in: paymentIds } },
+    where: { dairyId: req.dairyId!, id: { in: paymentIds } },
     data: { status: 'PAID', paidAt: new Date(), kopokopoRef: kopokopoRef || null },
   });
   res.json({ paid: result.count });
@@ -425,7 +425,7 @@ router.post('/advance', authorize('ADMIN', 'OFFICE'), async (req, res) => {
   const { farmerId, farmerCode, amount, notes, date } = req.body;
   let fId = farmerId;
   if (!fId && farmerCode) {
-    const farmer = await prisma.farmer.findFirst({ where: { code: farmerCode.toUpperCase() } });
+    const farmer = await prisma.farmer.findFirst({ where: { dairyId: req.dairyId!, code: farmerCode.toUpperCase() } });
     if (!farmer) throw new AppError(404, `Farmer ${farmerCode} not found`);
     fId = farmer.id;
   }
@@ -448,7 +448,7 @@ router.post('/advance', authorize('ADMIN', 'OFFICE'), async (req, res) => {
   }
 
   const advance = await prisma.farmerAdvance.create({
-    data: { farmerId: Number(fId), amount: Number(amount), advanceDate, notes: notes || null },
+    data: { dairyId: req.dairyId!, farmerId: Number(fId), amount: Number(amount), advanceDate, notes: notes || null },
     include: { farmer: { select: { code: true, name: true } } },
   });
   res.status(201).json(advance);
@@ -557,9 +557,9 @@ router.get('/summary', async (req, res) => {
   const y = Number(year) || new Date().getFullYear();
 
   const [midPayments, endPayments, advances] = await Promise.all([
-    prisma.farmerPayment.findMany({ where: { periodMonth: m, periodYear: y, isMidMonth: true } }),
-    prisma.farmerPayment.findMany({ where: { periodMonth: m, periodYear: y, isMidMonth: false } }),
-    prisma.farmerAdvance.findMany({ where: { advanceDate: { gte: new Date(y, m-1, 1), lt: new Date(y, m, 1) } } }),
+    prisma.farmerPayment.findMany({ where: { dairyId: req.dairyId!, periodMonth: m, periodYear: y, isMidMonth: true } }),
+    prisma.farmerPayment.findMany({ where: { dairyId: req.dairyId!, periodMonth: m, periodYear: y, isMidMonth: false } }),
+    prisma.farmerAdvance.findMany({ where: { dairyId: req.dairyId!, advanceDate: { gte: new Date(y, m-1, 1), lt: new Date(y, m, 1) } } }),
   ]);
 
   res.json({
@@ -631,7 +631,7 @@ router.post('/disburse', authorize('ADMIN', 'OFFICE'), async (req, res) => {
 
     if (paidIds.length > 0) {
       await prisma.farmerPayment.updateMany({
-        where: { id: { in: paidIds } },
+        where: { dairyId: req.dairyId!, id: { in: paidIds } },
         data: { status: 'PAID', paidAt: new Date() },
       });
     }

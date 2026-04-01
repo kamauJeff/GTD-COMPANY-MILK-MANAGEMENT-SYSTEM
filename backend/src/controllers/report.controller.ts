@@ -15,12 +15,12 @@ export async function getOverview(req: Request, res: Response) {
   const { start, end } = periodBounds(m, y);
 
   const [collAgg, advAgg, receiptsAgg, shopAgg, payments, batchAgg] = await Promise.all([
-    prisma.milkCollection.aggregate({ where: { collectedAt: { gte: start, lt: end } }, _sum: { litres: true }, _count: { farmerId: true } }),
-    prisma.farmerAdvance.aggregate({ where: { advanceDate: { gte: start, lt: end } }, _sum: { amount: true }, _count: { farmerId: true } }),
-    prisma.factoryReceipt.aggregate({ where: { receivedAt: { gte: start, lt: end } }, _sum: { litres: true } }),
-    prisma.shopSale.aggregate({ where: { saleDate: { gte: start, lt: end } }, _sum: { litresSold: true } }).catch(() => ({ _sum: { litresSold: 0 } })),
-    prisma.farmerPayment.findMany({ where: { periodMonth: m, periodYear: y } }),
-    prisma.pasteurizationBatch.aggregate({ where: { processedAt: { gte: start, lt: end } }, _sum: { inputLitres: true, outputLitres: true, lossLitres: true } }).catch(() => ({ _sum: { inputLitres: 0, outputLitres: 0, lossLitres: 0 } })),
+    prisma.milkCollection.aggregate({ where: { dairyId: req.dairyId!, collectedAt: { gte: start, lt: end } }, _sum: { litres: true }, _count: { farmerId: true } }),
+    prisma.farmerAdvance.aggregate({ where: { dairyId: req.dairyId!, advanceDate: { gte: start, lt: end } }, _sum: { amount: true }, _count: { farmerId: true } }),
+    prisma.factoryReceipt.aggregate({ where: { dairyId: req.dairyId!, receivedAt: { gte: start, lt: end } }, _sum: { litres: true } }),
+    prisma.shopSale.aggregate({ where: { dairyId: req.dairyId!, saleDate: { gte: start, lt: end } }, _sum: { litresSold: true } }).catch(() => ({ _sum: { litresSold: 0 } })),
+    prisma.farmerPayment.findMany({ where: { dairyId: req.dairyId!, periodMonth: m, periodYear: y } }),
+    prisma.pasteurizationBatch.aggregate({ where: { dairyId: req.dairyId!, processedAt: { gte: start, lt: end } }, _sum: { inputLitres: true, outputLitres: true, lossLitres: true } }).catch(() => ({ _sum: { inputLitres: 0, outputLitres: 0, lossLitres: 0 } })),
   ]);
 
   const totalLitres   = Number(collAgg._sum.litres || 0);
@@ -51,7 +51,7 @@ export async function getCollectionsReport(req: Request, res: Response) {
 
   const byRoute = await prisma.milkCollection.groupBy({
     by: ['routeId'],
-    where: { collectedAt: { gte: start, lt: end } },
+    where: { dairyId: req.dairyId!, collectedAt: { gte: start, lt: end } },
     _sum: { litres: true },
     _count: { farmerId: true },
   });
@@ -63,11 +63,11 @@ export async function getCollectionsReport(req: Request, res: Response) {
 
   // Zero-litre farmers
   const activeFarmerIds = await prisma.milkCollection.findMany({
-    where: { collectedAt: { gte: start, lt: end } },
+    where: { dairyId: req.dairyId!, collectedAt: { gte: start, lt: end } },
     select: { farmerId: true },
     distinct: ['farmerId'],
   });
-  const totalFarmers = await prisma.farmer.count({ where: { isActive: true } });
+  const totalFarmers = await prisma.farmer.count({ where: { dairyId: req.dairyId!, isActive: true } });
   const zeroFarmers = totalFarmers - activeFarmerIds.length;
 
   const routeData = byRoute.map(r => ({
@@ -100,16 +100,16 @@ export async function getFarmersReport(req: Request, res: Response) {
   const [collections, advances, payments] = await Promise.all([
     prisma.milkCollection.groupBy({
       by: ['farmerId'],
-      where: { collectedAt: { gte: start, lt: end } },
+      where: { dairyId: req.dairyId!, collectedAt: { gte: start, lt: end } },
       _sum: { litres: true },
     }),
     prisma.farmerAdvance.groupBy({
       by: ['farmerId'],
-      where: { advanceDate: { gte: start, lt: end } },
+      where: { dairyId: req.dairyId!, advanceDate: { gte: start, lt: end } },
       _sum: { amount: true },
     }),
     prisma.farmerPayment.findMany({
-      where: { periodMonth: m, periodYear: y },
+      where: { dairyId: req.dairyId!, periodMonth: m, periodYear: y },
       include: { farmer: { include: { route: { select: { name: true } } } } },
     }),
   ]);
@@ -150,7 +150,7 @@ export async function getGradersReport(req: Request, res: Response) {
   const { start, end } = periodBounds(m, y);
 
   const graders = await prisma.employee.findMany({
-    where: { role: 'GRADER', isActive: true },
+    where: { dairyId: req.dairyId!, role: 'GRADER', isActive: true },
     include: { supervisedRoutes: { select: { id: true, name: true, code: true } } },
     orderBy: { code: 'asc' },
   });
@@ -166,7 +166,7 @@ export async function getGradersReport(req: Request, res: Response) {
     };
     const [collAgg, recvAgg] = await Promise.all([
       prisma.milkCollection.aggregate({ where: collWhere, _sum: { litres: true } }),
-      prisma.factoryReceipt.aggregate({ where: { graderId: g.id, receivedAt: { gte: start, lt: end } }, _sum: { litres: true } }),
+      prisma.factoryReceipt.aggregate({ where: { dairyId: req.dairyId!, graderId: g.id, receivedAt: { gte: start, lt: end } }, _sum: { litres: true } }),
     ]);
     const collected = Number(collAgg._sum.litres || 0);
     const received  = Number(recvAgg._sum.litres || 0);
@@ -197,9 +197,9 @@ export async function getFactoryReport(req: Request, res: Response) {
   const { start, end } = periodBounds(m, y);
 
   const [receiptsAgg, batchAgg, delivAgg] = await Promise.all([
-    prisma.factoryReceipt.aggregate({ where: { receivedAt: { gte: start, lt: end } }, _sum: { litres: true } }),
-    prisma.pasteurizationBatch.aggregate({ where: { processedAt: { gte: start, lt: end } }, _sum: { inputLitres: true, outputLitres: true, lossLitres: true }, _count: { id: true } }).catch(() => ({ _sum: { inputLitres: 0, outputLitres: 0, lossLitres: 0 }, _count: { id: 0 } })),
-    prisma.shopSale.aggregate({ where: { saleDate: { gte: start, lt: end } }, _sum: { litresSold: true } }).catch(() => ({ _sum: { litresSold: 0 } })),
+    prisma.factoryReceipt.aggregate({ where: { dairyId: req.dairyId!, receivedAt: { gte: start, lt: end } }, _sum: { litres: true } }),
+    prisma.pasteurizationBatch.aggregate({ where: { dairyId: req.dairyId!, processedAt: { gte: start, lt: end } }, _sum: { inputLitres: true, outputLitres: true, lossLitres: true }, _count: { id: true } }).catch(() => ({ _sum: { inputLitres: 0, outputLitres: 0, lossLitres: 0 }, _count: { id: 0 } })),
+    prisma.shopSale.aggregate({ where: { dairyId: req.dairyId!, saleDate: { gte: start, lt: end } }, _sum: { litresSold: true } }).catch(() => ({ _sum: { litresSold: 0 } })),
   ]);
 
   const input  = Number(batchAgg._sum.inputLitres || 0);
@@ -222,7 +222,7 @@ export async function getPaymentsReport(req: Request, res: Response) {
   const y = Number(req.query.year)  || new Date().getFullYear();
 
   const payments = await prisma.farmerPayment.findMany({
-    where: { periodMonth: m, periodYear: y },
+    where: { dairyId: req.dairyId!, periodMonth: m, periodYear: y },
     include: { farmer: { select: { code: true, name: true } } },
   });
 
@@ -262,7 +262,7 @@ export async function getDailyLedger(req: Request, res: Response) {
     prisma.milkCollection.findMany({ where: collWhere, select: { routeId: true, litres: true, farmerId: true } }),
     // FactoryReceipt has no routeId — get grader's routeId via Employee relation
     prisma.factoryReceipt.findMany({
-      where: { receivedAt: { gte: d, lt: next } },
+      where: { dairyId: req.dairyId!, receivedAt: { gte: d, lt: next } },
       include: { grader: true },
     }).catch(() => [] as any[]),
     prisma.route.findMany({
@@ -330,12 +330,12 @@ export async function getShopsReport(req: Request, res: Response) {
   const prevEnd   = new Date(year, month - 1, 1);
 
   const [drops, sales, prevDrops, prevSales] = await Promise.all([
-    prisma.shopDrop.groupBy({ by: ['shopId'], where: { droppedAt: { gte: start, lt: end } }, _sum: { litres: true } }),
-    prisma.shopSale.groupBy({ by: ['shopId'], where: { saleDate: { gte: start, lt: end } }, _sum: { litresSold: true, cashCollected: true, tillAmount: true } }),
+    prisma.shopDrop.groupBy({ by: ['shopId'], where: { dairyId: req.dairyId!, droppedAt: { gte: start, lt: end } }, _sum: { litres: true } }),
+    prisma.shopSale.groupBy({ by: ['shopId'], where: { dairyId: req.dairyId!, saleDate: { gte: start, lt: end } }, _sum: { litresSold: true, cashCollected: true, tillAmount: true } }),
     // Previous month drops
-    prisma.shopDrop.groupBy({ by: ['shopId'], where: { droppedAt: { gte: prevStart, lt: prevEnd } }, _sum: { litres: true } }),
+    prisma.shopDrop.groupBy({ by: ['shopId'], where: { dairyId: req.dairyId!, droppedAt: { gte: prevStart, lt: prevEnd } }, _sum: { litres: true } }),
     // Previous month sales
-    prisma.shopSale.groupBy({ by: ['shopId'], where: { saleDate: { gte: prevStart, lt: prevEnd } }, _sum: { litresSold: true } }),
+    prisma.shopSale.groupBy({ by: ['shopId'], where: { dairyId: req.dairyId!, saleDate: { gte: prevStart, lt: prevEnd } }, _sum: { litresSold: true } }),
   ]);
 
   const dropMap     = new Map(drops.map(d    => [d.shopId, Number(d._sum.litres || 0)]));

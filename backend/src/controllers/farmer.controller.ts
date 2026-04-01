@@ -45,7 +45,7 @@ export async function getFarmers(req: Request, res: Response) {
 
 export async function getFarmer(req: Request, res: Response) {
   const farmer = await prisma.farmer.findUnique({
-    where: { id: Number(req.params.id) },
+    where: { dairyId: req.dairyId!, id: Number(req.params.id) },
     include: {
       route: true,
       collections: { orderBy: { collectedAt: 'desc' }, take: 31 },
@@ -101,7 +101,7 @@ export async function importFarmers(req: Request, res: Response) {
     const code = String(row.getCell(1).value || '').trim();
     if (!code) continue;
     const routeCode = String(row.getCell(5).value || '').trim();
-    const route = await prisma.route.findUnique({ where: { code: routeCode } });
+    const route = await prisma.route.findUnique({ where: { dairyId: req.dairyId!, code: routeCode } });
     if (!route) continue;
     const phone = formatPhone(String(row.getCell(4).value || ''));
     const data: any = {
@@ -115,7 +115,7 @@ export async function importFarmers(req: Request, res: Response) {
       bankAccount: String(row.getCell(9).value || '').trim() || null,
       isActive: true,
     };
-    const existing = await prisma.farmer.findUnique({ where: { code } });
+    const existing = await prisma.farmer.findUnique({ where: { dairyId: req.dairyId!, code } });
     if (existing) { await prisma.farmer.update({ where: { code }, data }); updated++; }
     else { await prisma.farmer.create({ data }); created++; }
   }

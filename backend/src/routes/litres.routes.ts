@@ -95,9 +95,9 @@ router.post('/litres-ledger', authorize('ADMIN', 'OFFICE', 'GRADER'), async (req
     return res.status(400).json({ error: 'Only brokers and issues can be edited manually' });
 
   const entry = await prisma.litresEntry.upsert({
-    where: { section_name_day_month_year: { section, name, day, month, year } },
+    where: { dairyId_section_name_day_month_year: { dairyId: req.dairyId!, section, name, day, month, year } },
     update: { value: Number(value) || 0 },
-    create: { section, name, day, month, year, value: Number(value) || 0 },
+    create: { dairyId: req.dairyId!, section, name, day, month, year, value: Number(value) || 0 },
   });
 
   // Recalculate balance for this day
@@ -116,14 +116,14 @@ router.post('/litres-ledger', authorize('ADMIN', 'OFFICE', 'GRADER'), async (req
   const issuesTotal  = allEntries.filter(e => e.section === 'issues').reduce((s, e) => s + Number(e.value), 0);
 
   const prevBal = day > 1
-    ? await prisma.litresBalance.findUnique({ where: { day_month_year: { day: day - 1, month, year } } })
+    ? await prisma.litresBalance.findUnique({ where: { dairyId_day_month_year: { dairyId: req.dairyId!, day: day - 1, month, year } } })
     : null;
   const prevBalance = prevBal ? Number(prevBal.balance) : 0;
   const available   = prevBalance + routesTotal + brokersTotal - issuesTotal;
   const newBalance  = available - salesTotal;
 
   await prisma.litresBalance.upsert({
-    where: { day_month_year: { day, month, year } },
+    where: { dairyId_day_month_year: { dairyId: req.dairyId!, day, month, year } },
     update: { balance: newBalance },
     create: { day, month, year, balance: newBalance },
   });
@@ -135,9 +135,9 @@ router.post('/litres-ledger', authorize('ADMIN', 'OFFICE', 'GRADER'), async (req
 router.post('/litres-ledger/set-balance', authorize('ADMIN', 'OFFICE'), async (req, res) => {
   const { month, year, balance } = req.body;
   const result = await prisma.litresBalance.upsert({
-    where: { day_month_year: { day: 0, month, year } },
+    where: { dairyId_day_month_year: { dairyId: req.dairyId!, day: 0, month, year } },
     update: { balance: Number(balance) },
-    create: { day: 0, month, year, balance: Number(balance) },
+    create: { dairyId: req.dairyId!, day: 0, month, year, balance: Number(balance) },
   });
   res.json(result);
 });
@@ -148,9 +148,9 @@ router.post('/litres-ledger/add-row', authorize('ADMIN', 'OFFICE'), async (req, 
   if (!['brokers', 'issues'].includes(section))
     return res.status(400).json({ error: 'Can only add brokers or issues rows' });
   const entry = await prisma.litresEntry.upsert({
-    where: { section_name_day_month_year: { section, name, day: 1, month, year } },
+    where: { dairyId_section_name_day_month_year: { dairyId: req.dairyId!, section, name, day: 1, month, year } },
     update: {},
-    create: { section, name, day: 1, month, year, value: 0 },
+    create: { dairyId: req.dairyId!, section, name, day: 1, month, year, value: 0 },
   });
   res.json(entry);
 });

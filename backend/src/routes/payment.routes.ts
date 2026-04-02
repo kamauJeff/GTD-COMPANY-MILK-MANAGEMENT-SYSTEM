@@ -28,9 +28,9 @@ function periodDates(month: number, year: number, isMidMonth: boolean) {
   return { start: new Date(Date.UTC(year, month - 1, 1)), end: new Date(Date.UTC(year, month, 1)) };
 }
 
-async function computeFarmerPayment(farmerId: number, month: number, year: number, isMidMonth: boolean) {
+async function computeFarmerPayment(farmerId: number, month: number, year: number, isMidMonth: boolean, dairyId: number) {
   const farmer = await prisma.farmer.findUnique({
-    where: { dairyId: req.dairyId!, id: farmerId },
+    where: { dairyId, id: farmerId },
     include: { route: { select: { id: true, name: true, code: true } } },
   });
   if (!farmer) return null;
@@ -41,7 +41,7 @@ async function computeFarmerPayment(farmerId: number, month: number, year: numbe
   let treatAsFull = false;
   if (!isMidMonth && farmer.paidOn15th) {
     const midPayment = await prisma.farmerPayment.findFirst({
-      where: { dairyId: req.dairyId!, farmerId, periodMonth: month, periodYear: year, isMidMonth: true },
+      where: { dairyId, farmerId, periodMonth: month, periodYear: year, isMidMonth: true },
       select: { netPay: true, id: true },
     });
     // No mid-month record OR negative mid-month → treat as full-month
@@ -80,7 +80,7 @@ async function computeFarmerPayment(farmerId: number, month: number, year: numbe
     const prevEndYear  = month === 1 ? year - 1 : year;
     // Check office b/f correction first
     const bfDeduction = await prisma.farmerDeduction.findFirst({
-      where: { dairyId: req.dairyId!, farmerId, periodMonth: month, periodYear: year, reason: { contains: 'B/f' } },
+      where: { dairyId, farmerId, periodMonth: month, periodYear: year, reason: { contains: 'B/f' } },
       orderBy: { deductionDate: 'desc' },
     });
     if (bfDeduction) {
@@ -88,7 +88,7 @@ async function computeFarmerPayment(farmerId: number, month: number, year: numbe
     } else {
       // Previous end-month negative
       const prevNeg = await prisma.farmerPayment.findFirst({
-        where: { dairyId: req.dairyId!, farmerId, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
+        where: { dairyId, farmerId, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
       });
       if (prevNeg) bfBalance = Math.abs(Number(prevNeg.netPay));
     }
@@ -96,9 +96,9 @@ async function computeFarmerPayment(farmerId: number, month: number, year: numbe
 
   // ── Fetch data ──────────────────────────────────────────────────────────────
   const [collAgg, advAgg, dedAgg] = await Promise.all([
-    prisma.milkCollection.aggregate({ where: { dairyId: req.dairyId!, farmerId, collectedAt: { gte: collStart, lt: collEnd } }, _sum: { litres: true } }),
-    prisma.farmerAdvance.aggregate({ where: { dairyId: req.dairyId!, farmerId, advanceDate: { gte: advStart, lt: advEnd } }, _sum: { amount: true } }),
-    prisma.farmerDeduction.aggregate({ where: { dairyId: req.dairyId!, farmerId, periodMonth: month, periodYear: year, reason: { not: { contains: 'B/f' } } }, _sum: { amount: true } }),
+    prisma.milkCollection.aggregate({ where: { dairyId, farmerId, collectedAt: { gte: collStart, lt: collEnd } }, _sum: { litres: true } }),
+    prisma.farmerAdvance.aggregate({ where: { dairyId, farmerId, advanceDate: { gte: advStart, lt: advEnd } }, _sum: { amount: true } }),
+    prisma.farmerDeduction.aggregate({ where: { dairyId, farmerId, periodMonth: month, periodYear: year, reason: { not: { contains: 'B/f' } } }, _sum: { amount: true } }),
   ]);
 
   const totalLitres    = Number(collAgg._sum.litres || 0);

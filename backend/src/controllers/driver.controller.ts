@@ -44,7 +44,7 @@ export const upsertTrip = async (req: Request, res: Response) => {
     });
   } else {
     trip = await prisma.driverTrip.create({
-      data: { driverId: parseInt(driverId), tripDate: new Date(tripDate), routesCovered, totalLitres: totalLitres || 0, status: status || 'PENDING', notes },
+      data: { dairyId: req.dairyId!, driverId: parseInt(driverId), tripDate: new Date(tripDate), routesCovered, totalLitres: totalLitres || 0, status: status || 'PENDING', notes },
     });
   }
 

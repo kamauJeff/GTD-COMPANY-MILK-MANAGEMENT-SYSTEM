@@ -190,9 +190,9 @@ export const saveLiquid = async (req: Request, res: Response) => {
   const variance = Number(received || 0) - Number(dispatched || 0);
 
   const record = await prisma.liquidRecord.upsert({
-    where: { routeId_recordDate: { routeId: parseInt(routeId), recordDate: date } },
+    where: { dairyId_routeId_recordDate: { dairyId: req.dairyId!, routeId: parseInt(routeId), recordDate: date } },
     update: { graderId: graderId ? parseInt(graderId) : null, received: received || 0, dispatched: dispatched || 0, variance, notes },
-    create: { routeId: parseInt(routeId), graderId: graderId ? parseInt(graderId) : null, recordDate: date, received: received || 0, dispatched: dispatched || 0, variance, notes },
+    create: { dairyId: req.dairyId!, routeId: parseInt(routeId), graderId: graderId ? parseInt(graderId) : null, recordDate: date, received: received || 0, dispatched: dispatched || 0, variance, notes },
     include: { route: { select: { code: true, name: true } }, grader: { select: { name: true } } },
   });
 

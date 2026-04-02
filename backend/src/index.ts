@@ -31,6 +31,7 @@ import aiRoutes from './routes/ai.routes';
 import dashboardRoutes from './routes/dashboard.routes';
 import notificationsRoutes from './routes/notifications.routes';
 import priceTiersRoutes from './routes/priceTiers.routes';
+import superAdminRoutes from './routes/superAdmin.routes';
 import litresRoutes from './routes/litres.routes';
 import driverRoutes from './routes/driver.routes';
 
@@ -78,6 +79,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/price-tiers', priceTiersRoutes);
+app.use('/api/super', superAdminRoutes);
 app.use('/api/factory', litresRoutes);
 app.use('/api/drivers', driverRoutes);
 

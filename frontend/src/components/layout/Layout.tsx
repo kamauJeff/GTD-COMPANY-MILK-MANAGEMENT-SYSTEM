@@ -63,9 +63,10 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: 'System', icon: Cog,
-    roles: ['ADMIN'],
+    roles: ['ADMIN','SUPER_ADMIN'],
     items: [
-      { to: '/settings', icon: Cog, label: 'Settings', roles: ['ADMIN'] },
+      { to: '/settings',    icon: Cog,           label: 'Settings',       roles: ['ADMIN'] },
+      { to: '/super-admin', icon: Building2,      label: 'Platform Admin', roles: ['SUPER_ADMIN'] },
     ],
   },
 ];

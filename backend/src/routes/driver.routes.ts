@@ -62,8 +62,7 @@ router.post('/trips', authorize('ADMIN', 'OFFICE', 'DRIVER'), async (req, res) =
   const { driverId, tripDate, totalLitres, notes, drops } = req.body;
 
   const trip = await prisma.driverTrip.create({
-    data: {
-      driverId:     Number(driverId),
+    data: { dairyId: req.dairyId!, driverId:     Number(driverId),
       tripDate:     new Date(tripDate || Date.now()),
       totalLitres:  Number(totalLitres) || 0,
       notes:        notes || null,
@@ -106,8 +105,7 @@ router.put('/trips/:id', authorize('ADMIN', 'OFFICE', 'DRIVER'), async (req, res
 router.post('/trips/:id/drops', authorize('ADMIN', 'OFFICE', 'DRIVER'), async (req, res) => {
   const { shopId, litres } = req.body;
   const drop = await prisma.shopDrop.create({
-    data: {
-      tripId:    Number(req.params.id),
+    data: { dairyId: req.dairyId!, tripId:    Number(req.params.id),
       shopId:    Number(shopId),
       litres:    Number(litres),
       droppedAt: new Date(),

@@ -1,28 +1,42 @@
 // src/routes/payroll.routes.ts
 import { Router } from 'express';
 import { authenticate, authorize } from '../middleware/auth';
-import {
-  getPayroll, runPayroll, approvePayroll, addDeduction,
-  getRemittance, getEmployees, createEmployee, updateEmployee,
-  deactivateEmployee, setSalary, removeFromPayroll,
-} from '../controllers/payroll.controller';
+import prisma from '../config/prisma';
 
 const router = Router();
 router.use(authenticate);
 
-// ── Payroll entries ───────────────────────────────────────────
-router.get('/',                    getPayroll);
-router.get('/remittance',          getRemittance);
-router.post('/run',                authorize('ADMIN', 'OFFICE'), runPayroll);
-router.post('/approve',            authorize('ADMIN', 'OFFICE'), approvePayroll);
-router.post('/deduction',          authorize('ADMIN', 'OFFICE'), addDeduction);
-router.post('/set-salary',         authorize('ADMIN', 'OFFICE'), setSalary);
-router.delete('/:id',              authorize('ADMIN', 'OFFICE'), removeFromPayroll);
+router.get('/', async (req, res) => {
+  const { month, year } = req.query;
+  const where: any = {};
+  if (month) where.periodMonth = Number(month);
+  if (year) where.periodYear = Number(year);
+  const payrolls = await prisma.payroll.findMany({
+    where,
+    include: { employee: { select: { id: true, code: true, name: true, role: true } } },
+    orderBy: { employee: { name: 'asc' } },
+  });
+  res.json(payrolls);
+});
 
-// ── Employees / Staff ─────────────────────────────────────────
-router.get('/employees',           getEmployees);
-router.post('/employees',          authorize('ADMIN', 'OFFICE'), createEmployee);
-router.put('/employees/:id',       authorize('ADMIN', 'OFFICE'), updateEmployee);
-router.delete('/employees/:id',    authorize('ADMIN'),           deactivateEmployee);
+router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
+  const { month, year } = req.body;
+  const m = Number(month); const y = Number(year);
+  const employees = await prisma.employee.findMany({ where: { isActive: true } });
+  const created = [];
+  for (const emp of employees) {
+    const variances = await prisma.varianceRecord.findMany({ where: { employeeId: emp.id, periodMonth: m, periodYear: y, applied: false } });
+    const varianceDeductions = variances.reduce((s, v) => s + Number(v.amount), 0);
+    const netPay = Number(emp.salary) - varianceDeductions;
+    const payroll = await prisma.payroll.upsert({
+      where: { dairyId_employeeId_periodMonth_periodYear: { employeeId: emp.id, periodMonth: m, periodYear: y } },
+      create: { dairyId: req.dairyId!, employeeId: emp.id, periodMonth: m, periodYear: y, baseSalary: emp.salary, varianceDeductions, netPay },
+      update: { baseSalary: emp.salary, varianceDeductions, netPay },
+    });
+    await prisma.varianceRecord.updateMany({ where: { employeeId: emp.id, periodMonth: m, periodYear: y }, data: { applied: true } });
+    created.push(payroll);
+  }
+  res.json({ processed: created.length });
+});
 
 export default router;

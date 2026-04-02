@@ -23,8 +23,7 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   const { shopId, saleDate, litresSold, cashCollected, tillAmount, expectedRevenue, variance } = req.body;
   const sale = await prisma.shopSale.create({
-    data: {
-      shopId: Number(shopId),
+    data: { dairyId: req.dairyId!, shopId: Number(shopId),
       saleDate: new Date(saleDate),
       litresSold: Number(litresSold),
       expectedRevenue: Number(expectedRevenue || 0),

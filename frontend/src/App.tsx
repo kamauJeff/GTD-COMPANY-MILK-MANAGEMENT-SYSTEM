@@ -18,6 +18,7 @@ import AdvancesPage from './pages/AdvancesPage';
 import DisbursementPage from './pages/DisbursementPage';
 import StatementPage from './pages/StatementPage';
 import SettingsPage from './pages/SettingsPage';
+import SuperAdminPage from './pages/SuperAdminPage';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const token = useAuthStore((s) => s.token);
@@ -45,6 +46,7 @@ export default function App() {
         <Route path="disbursement" element={<DisbursementPage />} />
         <Route path="statements"   element={<StatementPage />} />
         <Route path="settings"     element={<SettingsPage />} />
+        <Route path="super-admin"  element={<SuperAdminPage />} />
       </Route>
     </Routes>
   );

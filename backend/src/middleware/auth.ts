@@ -26,7 +26,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
   }
   const token = header.slice(7);
   try {
-    req.user    = jwt.verify(token, process.env.JWT_SECRET!) as AuthPayload;
+    req.user    = jwt.verify(token, process.env.JWT_SECRET!) as unknown as AuthPayload;
     req.dairyId = req.user.dairyId;   // convenience shorthand
     next();
   } catch {

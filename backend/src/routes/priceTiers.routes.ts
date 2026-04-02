@@ -21,9 +21,9 @@ router.get('/', authorize('ADMIN','OFFICE'), async (req, res) => {
 router.post('/', authorize('ADMIN'), async (req, res) => {
   const { tiers } = req.body;
   await prisma.systemConfig.upsert({
-    where: { key: 'price_tiers' },
+    where: { dairyId_key: { dairyId: req.dairyId!, key: 'price_tiers' } },
     update: { value: JSON.stringify(tiers) },
-    create: { key: 'price_tiers', value: JSON.stringify(tiers) },
+    create: { dairyId: req.dairyId!, key: 'price_tiers', value: JSON.stringify(tiers) },
   });
   res.json({ saved: true, tiers });
 });

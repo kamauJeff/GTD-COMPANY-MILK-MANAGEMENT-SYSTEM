@@ -87,7 +87,7 @@ router.get('/liquid/grader-check', async (req, res) => {
   let existingRecord = null;
   if (route) {
     existingRecord = await prisma.liquidRecord.findUnique({
-      where: { dairyId: req.dairyId!, routeId_recordDate: { routeId: route.id, recordDate: d } },
+      where: { dairyId: req.dairyId!, dairyId_routeId_recordDate: { dairyId: req.dairyId!, routeId: route.id, recordDate: d } },
     }).catch(() => null);
   }
 
@@ -147,9 +147,9 @@ router.post('/liquid/grader-check', authorize('ADMIN', 'OFFICE'), async (req, re
   if (route) {
     try {
       liquidRecord = await prisma.liquidRecord.upsert({
-        where: { routeId_recordDate: { routeId: route.id, recordDate: d } },
+        where: { dairyId_routeId_recordDate: { dairyId: req.dairyId!, routeId: route.id, recordDate: d } },
         update: { graderId: Number(graderId), received, dispatched: totalCollected, variance, notes: notes || null },
-        create: { routeId: route.id, graderId: Number(graderId), recordDate: d, received, dispatched: totalCollected, variance, notes: notes || null },
+        create: { dairyId: req.dairyId!, routeId: route.id, graderId: Number(graderId), recordDate: d, received, dispatched: totalCollected, variance, notes: notes || null },
       });
     } catch (e) {
       console.error('LiquidRecord upsert failed:', e);

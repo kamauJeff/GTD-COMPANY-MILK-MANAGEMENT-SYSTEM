@@ -540,13 +540,11 @@ async function executeTool(name: string, input: any): Promise<any> {
     }
 
     case 'record_advance': {
-      const farmer = await prisma.farmer.findUnique({ where: { code: input.farmerCode.toUpperCase() } });
+      const farmer = await prisma.farmer.findFirst({ where: { code: input.farmerCode.toUpperCase() } });
       if (!farmer) return { error: `Farmer ${input.farmerCode} not found` };
 
       const advance = await prisma.farmerAdvance.create({
-        data: {
-          farmerId: farmer.id,
-          amount: input.amount,
+        data: { dairyId: 1, farmerId: farmer.id, amount: input.amount,
           advanceDate: input.date ? new Date(input.date) : new Date(),
           notes: input.notes || null,
         },

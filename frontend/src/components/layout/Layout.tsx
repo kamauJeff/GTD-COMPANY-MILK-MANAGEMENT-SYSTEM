@@ -7,7 +7,7 @@ import {
   CreditCard, Briefcase, BarChart2, LogOut, Sparkles, Droplets,
   Menu, X, Moon, Sun, Wifi, WifiOff, RefreshCw, UserCircle,
   DollarSign, Send, FileText, ChevronDown, TrendingUp,
-  Bell, Cog
+  Bell, Cog, Building2
 } from 'lucide-react';
 import { AIWidget } from '../AIWidget';
 import { ToastContainer } from '../Toast';

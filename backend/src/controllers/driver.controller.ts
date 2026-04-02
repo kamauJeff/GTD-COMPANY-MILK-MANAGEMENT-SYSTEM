@@ -63,10 +63,7 @@ export const upsertTrip = async (req: Request, res: Response) => {
 export const createDrop = async (req: Request, res: Response) => {
   const { tripId, shopId, litres, droppedAt } = req.body;
   const drop = await prisma.shopDrop.create({
-    data: {
-      tripId: parseInt(tripId),
-      shopId: parseInt(shopId),
-      litres: litres || 0,
+    data: { dairyId: req.dairyId!, tripId: parseInt(tripId), shopId: parseInt(shopId), litres: litres || 0,
       droppedAt: droppedAt ? new Date(droppedAt) : new Date(),
     },
     include: { shop: { select: { id: true, name: true, code: true } } },

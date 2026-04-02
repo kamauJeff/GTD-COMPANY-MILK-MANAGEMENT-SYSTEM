@@ -23,20 +23,20 @@ export const getStats = async (req: Request, res: Response) => {
 };
 
 // ─── Next Batch No ────────────────────────────────────────────────────────────
-export const getNextBatchNo = async (_req: Request, res: Response) => {
+export const getNextBatchNo = async (req: Request, res: Response) => {
   const last = await prisma.pasteurizationBatch.findFirst({ orderBy: { id: 'desc' } });
   const next = last ? `BATCH-${String(last.id + 1).padStart(4, '0')}` : 'BATCH-0001';
   res.json({ batchNo: next });
 };
 
 // ─── Graders list ─────────────────────────────────────────────────────────────
-export const getGraders = async (_req: Request, res: Response) => {
+export const getGraders = async (req: Request, res: Response) => {
   const graders = await prisma.employee.findMany({ where: { dairyId: req.dairyId!, role: 'GRADER', isActive: true }, select: { id: true, name: true, code: true }, orderBy: { name: 'asc' } });
   res.json(graders);
 };
 
 // ─── Drivers list ─────────────────────────────────────────────────────────────
-export const getDrivers = async (_req: Request, res: Response) => {
+export const getDrivers = async (req: Request, res: Response) => {
   const drivers = await prisma.employee.findMany({ where: { dairyId: req.dairyId!, role: 'DRIVER', isActive: true }, select: { id: true, name: true, code: true }, orderBy: { name: 'asc' } });
   res.json(drivers);
 };

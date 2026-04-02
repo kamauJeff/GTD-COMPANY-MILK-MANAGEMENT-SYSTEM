@@ -125,7 +125,7 @@ router.post('/litres-ledger', authorize('ADMIN', 'OFFICE', 'GRADER'), async (req
   await prisma.litresBalance.upsert({
     where: { dairyId_day_month_year: { dairyId: req.dairyId!, day, month, year } },
     update: { balance: newBalance },
-    create: { day, month, year, balance: newBalance },
+    create: { dairyId: req.dairyId!, day, month, year, balance: newBalance },
   });
 
   res.json({ entry, balance: newBalance, available, salesTotal, routesTotal, brokersTotal, issuesTotal });

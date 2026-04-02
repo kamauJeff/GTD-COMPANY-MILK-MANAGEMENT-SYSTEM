@@ -101,7 +101,7 @@ export async function importFarmers(req: Request, res: Response) {
     const code = String(row.getCell(1).value || '').trim();
     if (!code) continue;
     const routeCode = String(row.getCell(5).value || '').trim();
-    const route = await prisma.route.findUnique({ where: { dairyId: req.dairyId!, code: routeCode } });
+    const route = await prisma.route.findFirst({ where: { dairyId: req.dairyId!, code: routeCode } });
     if (!route) continue;
     const phone = formatPhone(String(row.getCell(4).value || ''));
     const data: any = {

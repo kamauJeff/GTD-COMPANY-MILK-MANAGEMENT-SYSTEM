@@ -1,79 +1,39 @@
-import { PrismaClient } from '@prisma/client';
+// src/seed.ts — seeds Gutoria (dairyId=1) with test data
+import { prisma } from './config/prisma';
 import bcrypt from 'bcryptjs';
 
-const prisma = new PrismaClient();
-
 async function main() {
-  console.log('Seeding Gutoria Dairies...');
+  const dairyId = 1;
 
-  const passwordHash = await bcrypt.hash('Admin@2024', 12);
+  // Admin
   await prisma.employee.upsert({
-    where: { code: 'ADMIN001' },
+    where: { dairyId_code: { dairyId, code: 'ADMIN001' } },
+    create: { dairyId, code: 'ADMIN001', name: 'Gutoria Admin', phone: '254700000000', role: 'ADMIN', salary: 0, passwordHash: await bcrypt.hash('gutoria2024', 12), paymentMethod: 'MPESA', isActive: true },
     update: {},
-    create: { code: 'ADMIN001', name: 'Jeff Kamau', phone: '0700000001', role: 'ADMIN', salary: 0, passwordHash, paymentMethod: 'MPESA', isActive: true },
   });
-  console.log('Admin created: ADMIN001');
 
-  const graderHash = await bcrypt.hash('Grader@2024', 12);
-  const grader = await prisma.employee.upsert({
-    where: { code: 'GRD001' },
+  // Grader
+  await prisma.employee.upsert({
+    where: { dairyId_code: { dairyId, code: 'GR001' } },
+    create: { dairyId, code: 'GR001', name: 'Test Grader', phone: '254711111111', role: 'GRADER', salary: 15000, passwordHash: await bcrypt.hash('grader2024', 12), paymentMethod: 'MPESA', mpesaPhone: '254711111111', isActive: true },
     update: {},
-    create: { code: 'GRD001', name: 'Peter Mwangi', phone: '0711000001', role: 'GRADER', salary: 25000, passwordHash: graderHash, paymentMethod: 'MPESA', mpesaPhone: '0711000001', isActive: true },
   });
-  console.log('Grader created: GRD001');
 
-  const routeNames = [
-    { code: 'RT001', name: 'Kiambu North' },
-    { code: 'RT002', name: 'Kiambu South' },
-    { code: 'RT003', name: 'Limuru East' },
-    { code: 'RT004', name: 'Tigoni' },
-    { code: 'RT005', name: 'Lari' },
-  ];
-  const routes = [];
-  for (const r of routeNames) {
-    const route = await prisma.route.upsert({ where: { code: r.code }, update: {}, create: r });
-    routes.push(route);
-    console.log('Route created:', r.code, '-', r.name);
-  }
+  // Route
+  const route = await prisma.route.upsert({
+    where: { dairyId_code: { dairyId, code: 'R01' } },
+    create: { dairyId, code: 'R01', name: 'Test Route' },
+    update: {},
+  });
 
-  const farmersData = [
-    { code: 'F001', name: 'John Kariuki',   phone: '0722111001', idx: 0, price: 45 },
-    { code: 'F002', name: 'Mary Wanjiku',   phone: '0722111002', idx: 0, price: 45 },
-    { code: 'F003', name: 'James Njoroge',  phone: '0722111003', idx: 1, price: 44 },
-    { code: 'F004', name: 'Grace Waithira', phone: '0722111004', idx: 1, price: 44 },
-    { code: 'F005', name: 'Samuel Kamau',   phone: '0722111005', idx: 2, price: 46 },
-    { code: 'F006', name: 'Alice Muthoni',  phone: '0722111006', idx: 2, price: 46 },
-    { code: 'F007', name: 'David Gitau',    phone: '0722111007', idx: 3, price: 45 },
-    { code: 'F008', name: 'Rose Njeri',     phone: '0722111008', idx: 3, price: 45 },
-  ];
-  for (const f of farmersData) {
-    await prisma.farmer.upsert({
-      where: { code: f.code },
-      update: {},
-      create: { code: f.code, name: f.name, phone: f.phone, routeId: routes[f.idx].id, pricePerLitre: f.price, paymentMethod: 'MPESA', mpesaPhone: f.phone, isActive: true },
-    });
-    console.log('Farmer created:', f.code, '-', f.name);
-  }
+  // Farmer
+  await prisma.farmer.upsert({
+    where: { dairyId_code: { dairyId, code: 'FM0001' } },
+    create: { dairyId, code: 'FM0001', name: 'Test Farmer', phone: '254722222222', routeId: route.id, pricePerLitre: 50, paymentMethod: 'MPESA', mpesaPhone: '254722222222', isActive: true },
+    update: {},
+  });
 
-  const allFarmers = await prisma.farmer.findMany();
-  let count = 0;
-  for (let daysAgo = 2; daysAgo >= 0; daysAgo--) {
-    const date = new Date();
-    date.setDate(date.getDate() - daysAgo);
-    date.setHours(7, 0, 0, 0);
-    for (const farmer of allFarmers) {
-      const litres = parseFloat((Math.random() * 15 + 5).toFixed(1));
-      await prisma.milkCollection.create({ data: { farmerId: farmer.id, routeId: farmer.routeId, graderId: grader.id, litres, collectedAt: date, synced: true } });
-      count++;
-    }
-  }
-  console.log('Collections created:', count);
-
-  console.log('\nDone! Login with:');
-  console.log('  Admin  -> ADMIN001 / Admin@2024');
-  console.log('  Grader -> GRD001   / Grader@2024');
+  console.log('✅ Seed complete for dairyId=1 (Gutoria)');
 }
 
-main()
-  .catch((e) => { console.error(e); process.exit(1); })
-  .finally(() => prisma.$disconnect());
+main().catch(console.error).finally(() => prisma.$disconnect());

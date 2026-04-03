@@ -115,8 +115,8 @@ export async function importFarmers(req: Request, res: Response) {
       bankAccount: String(row.getCell(9).value || '').trim() || null,
       isActive: true,
     };
-    const existing = await prisma.farmer.findUnique({ where: { dairyId: req.dairyId!, code } });
-    if (existing) { await prisma.farmer.update({ where: { code }, data }); updated++; }
+    const existing = await prisma.farmer.findFirst({ where: { dairyId: req.dairyId!, code } });
+    if (existing) { await prisma.farmer.update({ where: { id: existing.id }, data }); updated++; }
     else { await prisma.farmer.create({ data }); created++; }
   }
   res.json({ created, updated });

@@ -13,6 +13,14 @@ export default defineConfig({
     proxy: {
       '/api': { target: 'http://localhost:3001', changeOrigin: true },
     },
+    headers: {
+      // Dev CSP — allows eval for HMR
+      'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss: https:",
+    },
+  },
+  build: {
+    // Remove console logs in production
+    minify: 'esbuild',
+    target: 'es2020',
   },
 });
-

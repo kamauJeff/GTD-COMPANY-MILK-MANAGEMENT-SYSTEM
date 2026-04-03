@@ -35,24 +35,30 @@ export default function LoginPage() {
           <p className="text-sm text-gray-500 mt-1">Management System</p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleLogin} className="space-y-4" autoComplete="on">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Employee Code</label>
+            <label htmlFor="emp-code" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Employee Code</label>
             <input
+              id="emp-code"
+              name="username"
+              autoComplete="username"
               value={code}
-              onChange={(e) => setCode(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-              placeholder="e.g. EMP001"
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-gray-800 dark:text-gray-100"
+              placeholder="e.g. DIR001"
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <label htmlFor="emp-password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
             <input
+              id="emp-password"
+              name="password"
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 dark:bg-gray-800 dark:text-gray-100"
               placeholder="••••••••"
               required
             />

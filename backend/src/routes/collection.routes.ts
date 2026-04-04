@@ -164,7 +164,7 @@ router.get('/statement', async (req, res) => {
         orderBy: { deductionDate: 'desc' },
       }),
       prisma.farmerPayment.findFirst({
-        where: { dairyId: req.dairyId!, farmerId: farmer.id, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
+        where: { dairyId: req.dairyId!, farmerId: farmer.id, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 } }, // status omitted: carry forward ANY negative
       }),
     ]);
     if (bfCorr) bfBalance = Number(bfCorr.amount);
@@ -209,7 +209,7 @@ router.get('/statement', async (req, res) => {
           orderBy: { deductionDate: 'desc' },
         }),
         prisma.farmerPayment.findFirst({
-          where: { dairyId: req.dairyId!, farmerId: farmer.id, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
+          where: { dairyId: req.dairyId!, farmerId: farmer.id, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 } }, // status omitted: carry forward ANY negative
         }),
       ]);
       const prevBf   = bfCorr ? Number(bfCorr.amount) : (prevNeg ? Math.abs(Number(prevNeg.netPay)) : 0);
@@ -229,7 +229,7 @@ router.get('/statement', async (req, res) => {
         orderBy: { deductionDate: 'desc' },
       }),
       prisma.farmerPayment.findFirst({
-        where: { dairyId: req.dairyId!, farmerId: farmer.id, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
+        where: { dairyId: req.dairyId!, farmerId: farmer.id, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 } }, // status omitted: carry forward ANY negative
       }),
     ]);
     if (bfCorr) bfBalance = Number(bfCorr.amount);

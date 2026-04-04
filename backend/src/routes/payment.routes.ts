@@ -88,7 +88,7 @@ async function computeFarmerPayment(farmerId: number, month: number, year: numbe
     } else {
       // Previous end-month negative
       const prevNeg = await prisma.farmerPayment.findFirst({
-        where: { dairyId, farmerId, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
+        where: { dairyId, farmerId, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 } }, // status omitted: carry forward ANY negative
       });
       if (prevNeg) bfBalance = Math.abs(Number(prevNeg.netPay));
     }
@@ -333,8 +333,20 @@ router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
     if (noCorrection.length > 0) {
       const prevEndMonth = m === 1 ? 12 : m - 1;
       const prevEndYear  = m === 1 ? y - 1 : y;
+      // ── KEY FIX: do NOT filter by status: 'PAID' ─────────────────────────
+      // A farmer with a negative end-month balance was never disbursed,
+      // so their record stays PENDING/APPROVED — not PAID.
+      // We carry forward ANY negative end-month record regardless of status.
       const prevNegatives = await prisma.farmerPayment.findMany({
-        where: { dairyId: req.dairyId!, farmerId: { in: noCorrection }, periodMonth: prevEndMonth, periodYear: prevEndYear, isMidMonth: false, netPay: { lt: 0 }, status: 'PAID' },
+        where: {
+          dairyId:     req.dairyId!,
+          farmerId:    { in: noCorrection },
+          periodMonth: prevEndMonth,
+          periodYear:  prevEndYear,
+          isMidMonth:  false,
+          netPay:      { lt: 0 },
+          // status: intentionally omitted — PENDING/APPROVED/PAID all count
+        },
         select: { farmerId: true, netPay: true },
       });
       for (const p of prevNegatives) bfMap.set(p.farmerId, Math.abs(Number(p.netPay)));

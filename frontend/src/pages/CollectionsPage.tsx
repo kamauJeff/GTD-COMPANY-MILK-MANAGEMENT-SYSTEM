@@ -140,7 +140,7 @@ export default function CollectionsPage() {
           <Edit3 size={14} /> Corrections
         </button>
         <button onClick={handleExport}
-          className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
+          className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50">
           <Download size={14} /> Export CSV
         </button>
       </div>
@@ -167,30 +167,30 @@ export default function CollectionsPage() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-        <div className="bg-white rounded-xl border p-3 shadow-sm">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border p-3 shadow-sm">
           <div className="text-xs text-gray-400">Farmers</div>
           <div className="text-xl font-bold text-gray-800">{filtered.length}</div>
         </div>
-        <div className="bg-white rounded-xl border p-3 shadow-sm">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border p-3 shadow-sm">
           <div className="text-xs text-gray-400">Total Litres (TL)</div>
           <div className="text-xl font-bold text-green-700">{getGrandTotal().toFixed(1)} L</div>
         </div>
-        <div className="bg-white rounded-xl border p-3 shadow-sm">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border p-3 shadow-sm">
           <div className="text-xs text-gray-400">Mid-Month (1–15)</div>
           <div className="text-xl font-bold text-purple-700">{getMid15Total().toFixed(1)} L</div>
         </div>
-        <div className="bg-white rounded-xl border p-3 shadow-sm">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border p-3 shadow-sm">
           <div className="text-xs text-gray-400">Total Money (TM)</div>
           <div className="text-xl font-bold text-blue-700">KES {getGrandMoney().toLocaleString()}</div>
         </div>
-        <div className="bg-white rounded-xl border p-3 shadow-sm">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border p-3 shadow-sm">
           <div className="text-xs text-gray-400">Total Advances</div>
           <div className="text-xl font-bold text-orange-600">KES {filtered.reduce((s,f) => s + (f.totalAdvances||0), 0).toLocaleString()}</div>
         </div>
       </div>
 
       {/* Journal Grid */}
-      <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border shadow-sm overflow-hidden">
         {isLoading ? (
           <div className="text-center py-16 text-gray-400">Loading journal...</div>
         ) : filtered.length === 0 ? (
@@ -493,7 +493,7 @@ function FarmerRow({ f, idx, days, midDays, endDays, getTotal15, getTotalLitres,
   const advDates     = [5, 10, 20, 25];
   const totalDeductions = (f.bfBalance || 0) + (f.totalAdvances || 0); // b/f + all advances
   const amtPayable   = totalMoney - totalDeductions;
-  const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+  const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-gray-50 dark:bg-gray-800/50';
   return (
     <tr className={`border-b border-gray-100 ${rowBg} hover:bg-green-50`}>
       <td className={`sticky left-0 z-10 px-2 py-2 font-mono text-gray-400 text-xs ${rowBg}`}>{f.code}</td>
@@ -519,7 +519,7 @@ function FarmerRow({ f, idx, days, midDays, endDays, getTotal15, getTotalLitres,
       <td className="px-1 py-2 text-center font-bold text-green-700 bg-green-50 border-r border-green-100 text-xs">{totalLitres > 0 ? totalLitres.toFixed(1) : '–'}</td>
       <td className="px-1 py-2 text-center font-bold text-blue-700 bg-blue-50 border-r border-blue-100 text-xs">{totalMoney > 0 ? totalMoney.toLocaleString(undefined,{maximumFractionDigits:0}) : '–'}</td>
       {/* B/f */}
-      <td className={`px-1 py-2 text-center text-xs border-r ${(f.bfBalance || 0) > 0 ? 'text-red-600 font-bold bg-red-50' : 'text-gray-300'}`}>
+      <td className={`px-1 py-2 text-center text-xs border-r ${(f.bfBalance || 0) > 0 ? 'text-red-600 font-bold bg-red-50 dark:bg-red-900/20' : 'text-gray-300'}`}>
         {(f.bfBalance || 0) > 0 ? f.bfBalance.toLocaleString(undefined,{maximumFractionDigits:0}) : '–'}
       </td>
       {/* Advance columns - 4 only: 5,10,20,25 */}

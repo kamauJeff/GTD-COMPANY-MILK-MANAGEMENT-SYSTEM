@@ -32,6 +32,7 @@ export default function ShopsPage() {
   const { data: tripsData, isLoading: tripsLoading } = useQuery({
     queryKey: ['trips', month, year],
     queryFn: () => api.get('/api/drivers/trips', { params: { month, year } }),
+    staleTime: 0,
     enabled: tab === 'trips' || tab === 'dispatch',
   });
   const trips: any[] = tripsData?.data ?? [];
@@ -39,6 +40,7 @@ export default function ShopsPage() {
   const { data: summaryData, isLoading: summaryLoading } = useQuery({
     queryKey: ['daily-summary', date],
     queryFn: () => api.get('/api/drivers/daily-summary', { params: { date } }),
+    staleTime: 0,
     enabled: tab === 'reconcile',
   });
   const summary = summaryData?.data || {};
@@ -46,6 +48,7 @@ export default function ShopsPage() {
   const { data: salesData } = useQuery({
     queryKey: ['shop-sales', month, year],
     queryFn: () => api.get('/api/shop-sales', { params: { month, year } }),
+    staleTime: 0,
     enabled: tab === 'sales',
   });
   const sales: any[] = salesData?.data?.sales ?? salesData?.data ?? [];
@@ -54,6 +57,7 @@ export default function ShopsPage() {
   const { data: gridData } = useQuery({
     queryKey: ['shops-monthly', month, year],
     queryFn: () => api.get('/api/shops/monthly-grid', { params: { month, year } }),
+    staleTime: 0,
     enabled: tab === 'sales',
   });
   const grid: any[] = gridData?.data?.grid ?? [];
@@ -102,7 +106,7 @@ export default function ShopsPage() {
     onError: (e: any) => showError(e?.response?.data?.error || 'Failed'),
   });
 
-  const statusColor = (status: string) => ({ PENDING: 'bg-yellow-100 text-yellow-700', CONFIRMED: 'bg-green-100 text-green-700', CANCELLED: 'bg-red-100 text-red-600' }[status] || 'bg-gray-100 text-gray-600');
+  const statusColor = (status: string) => ({ PENDING: 'bg-yellow-100 text-yellow-700', CONFIRMED: 'bg-green-100 text-green-700', CANCELLED: 'bg-red-100 text-red-600' }[status] || 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300');
 
   return (
     <div className="p-4 md:p-6">
@@ -132,7 +136,7 @@ export default function ShopsPage() {
           ['assign',   '👤 Assign Shopkeepers'],
         ] as const).map(([t, l]) => (
           <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === t ? 'bg-green-600 text-white' : 'border border-gray-300 hover:bg-gray-50'}`}>
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === t ? 'bg-green-600 text-white' : 'border border-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}>
             {l}
           </button>
         ))}
@@ -152,7 +156,7 @@ export default function ShopsPage() {
 
           {/* New trip form */}
           {showNewTrip && (
-            <div className="bg-white rounded-xl border shadow-sm p-5">
+            <div className="bg-white dark:bg-gray-900 rounded-xl border shadow-sm p-5">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="font-semibold text-gray-800">🚚 New Driver Dispatch</h3>
                 <button onClick={() => setShowNewTrip(false)}><X size={18} className="text-gray-400" /></button>
@@ -185,9 +189,9 @@ export default function ShopsPage() {
           )}
 
           {/* Trips list */}
-          {tripsLoading ? <div className="bg-white rounded-xl border p-12 text-center text-gray-400">Loading trips...</div>
+          {tripsLoading ? <div className="bg-white dark:bg-gray-900 rounded-xl border p-12 text-center text-gray-400">Loading trips...</div>
           : trips.length === 0 ? (
-            <div className="bg-white rounded-xl border p-12 text-center text-gray-400">
+            <div className="bg-white dark:bg-gray-900 rounded-xl border p-12 text-center text-gray-400">
               <Truck size={40} className="mx-auto mb-3 opacity-30" />
               <div className="font-medium">No trips this month</div>
               <div className="text-sm mt-1">Create a dispatch to get started</div>
@@ -196,9 +200,9 @@ export default function ShopsPage() {
             const isExpanded = expandedTrip === trip.id;
             const dropsTotal = trip.shopDrops?.reduce((s: number, d: any) => s + Number(d.litres), 0) || 0;
             return (
-              <div key={trip.id} className="bg-white rounded-xl border shadow-sm overflow-hidden">
+              <div key={trip.id} className="bg-white dark:bg-gray-900 rounded-xl border shadow-sm overflow-hidden">
                 {/* Trip header */}
-                <div className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50"
+                <div className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50"
                   onClick={() => setExpandedTrip(isExpanded ? null : trip.id)}>
                   <div className="flex items-center gap-3">
                     {isExpanded ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronRight size={16} className="text-gray-400" />}
@@ -221,9 +225,9 @@ export default function ShopsPage() {
 
                 {/* Trip drops */}
                 {isExpanded && (
-                  <div className="border-t">
+                  <div className="border-t dark:border-gray-700">
                     <table className="w-full text-sm">
-                      <thead className="bg-gray-50 border-b">
+                      <thead className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
                         <tr>
                           {['Shop','Litres Dropped','Time',''].map(h => (
                             <th key={h} className="text-left px-4 py-2 text-xs text-gray-500 font-medium">{h}</th>
@@ -234,7 +238,7 @@ export default function ShopsPage() {
                         {trip.shopDrops?.length === 0 ? (
                           <tr><td colSpan={4} className="px-4 py-4 text-center text-gray-400 text-sm">No drops recorded yet</td></tr>
                         ) : trip.shopDrops?.map((drop: any) => (
-                          <tr key={drop.id} className="border-b hover:bg-gray-50">
+                          <tr key={drop.id} className="border-b hover:bg-gray-50 dark:hover:bg-gray-800/50">
                             <td className="px-4 py-2.5 font-medium">{drop.shop?.name}</td>
                             <td className="px-4 py-2.5 font-bold text-green-700">{Number(drop.litres).toFixed(1)} L</td>
                             <td className="px-4 py-2.5 text-xs text-gray-400">{new Date(drop.droppedAt).toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' })}</td>
@@ -245,7 +249,7 @@ export default function ShopsPage() {
                           </tr>
                         ))}
                       </tbody>
-                      <tfoot className="bg-gray-50 border-t">
+                      <tfoot className="bg-gray-50 dark:bg-gray-800 border-t dark:border-gray-700">
                         <tr>
                           <td className="px-4 py-2 font-bold text-xs text-gray-600">TOTAL</td>
                           <td className="px-4 py-2 font-bold text-green-700">{dropsTotal.toFixed(1)} L</td>
@@ -278,7 +282,7 @@ export default function ShopsPage() {
                           <button onClick={() => setShowAddDrop(null)} className="text-gray-400 hover:text-gray-600 text-sm">Cancel</button>
                         </div>
                       ) : (
-                        <div className="p-3 border-t">
+                        <div className="p-3 border-t dark:border-gray-700">
                           <button onClick={() => setShowAddDrop(trip.id)}
                             className="flex items-center gap-2 px-3 py-2 border border-dashed border-green-400 text-green-600 rounded-lg text-sm hover:bg-green-50 w-full justify-center">
                             <Plus size={14} /> Add Shop Drop
@@ -298,7 +302,7 @@ export default function ShopsPage() {
       {tab === 'sales' && (
         <div className="space-y-4">
           {/* Record sale form */}
-          <div className="bg-white rounded-xl border shadow-sm p-5">
+          <div className="bg-white dark:bg-gray-900 rounded-xl border shadow-sm p-5">
             <h3 className="font-semibold text-gray-800 mb-4">Record Shop Sale</h3>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div>
@@ -348,7 +352,7 @@ export default function ShopsPage() {
           </div>
 
           {/* Monthly grid */}
-          <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+          <div className="bg-white dark:bg-gray-900 rounded-xl border shadow-sm overflow-hidden">
             <div className="px-4 py-3 bg-gray-50 border-b font-medium text-sm text-gray-700">Monthly Sales Grid</div>
             {grid.length === 0 ? (
               <div className="text-center py-12 text-gray-400">No sales recorded yet</div>
@@ -366,8 +370,8 @@ export default function ShopsPage() {
                     {grid.map((row: any, idx: number) => {
                       const rowTotal = days.reduce((s, d) => s + (row.days?.[d]?.litres || 0), 0);
                       return (
-                        <tr key={idx} className={`border-b ${idx%2===0?'bg-white':'bg-gray-50'} hover:bg-green-50`}>
-                          <td className={`sticky left-0 z-10 px-3 py-2 border-r ${idx%2===0?'bg-white':'bg-gray-50'}`}>
+                        <tr key={idx} className={`border-b ${idx%2===0?'bg-white dark:bg-gray-900':'bg-gray-50'} hover:bg-green-50`}>
+                          <td className={`sticky left-0 z-10 px-3 py-2 border-r ${idx%2===0?'bg-white dark:bg-gray-900':'bg-gray-50'}`}>
                             <div className="font-medium text-gray-800 text-xs">{row.shop?.name}</div>
                             {row.shop?.keeper && <div className="text-xs text-gray-400">{row.shop.keeper.name}</div>}
                           </td>
@@ -420,9 +424,9 @@ export default function ShopsPage() {
               className="px-3 py-2 border rounded-lg text-sm" />
           </div>
 
-          {summaryLoading ? <div className="bg-white rounded-xl border p-12 text-center text-gray-400">Loading...</div>
+          {summaryLoading ? <div className="bg-white dark:bg-gray-900 rounded-xl border p-12 text-center text-gray-400">Loading...</div>
           : !summary.shops?.length ? (
-            <div className="bg-white rounded-xl border p-12 text-center text-gray-400">
+            <div className="bg-white dark:bg-gray-900 rounded-xl border p-12 text-center text-gray-400">
               <AlertTriangle size={40} className="mx-auto mb-3 opacity-30" />
               <div className="font-medium">No data for this date</div>
               <div className="text-sm mt-1">Record trips and sales first</div>
@@ -446,9 +450,9 @@ export default function ShopsPage() {
               </div>
 
               {/* Per-shop breakdown */}
-              <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+              <div className="bg-white dark:bg-gray-900 rounded-xl border shadow-sm overflow-hidden">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b">
+                  <thead className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
                     <tr>{['Shop','Shopkeeper','Delivered','Sold','Unaccounted','Cash','Till','Expected Rev','Variance','Status'].map(h => (
                       <th key={h} className="text-left px-3 py-3 text-xs text-gray-500 font-medium whitespace-nowrap">{h}</th>
                     ))}</tr>
@@ -457,7 +461,7 @@ export default function ShopsPage() {
                     {summary.shops.map((s: any) => {
                       const hasIssue = s.unaccounted > 0.5 || s.revenueVariance < -50;
                       return (
-                        <tr key={s.shop.id} className={`border-b ${hasIssue ? 'bg-red-50' : 'hover:bg-gray-50'}`}>
+                        <tr key={s.shop.id} className={`border-b ${hasIssue ? 'bg-red-50 dark:bg-red-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}>
                           <td className="px-3 py-2.5 font-medium">{s.shop.name}</td>
                           <td className="px-3 py-2.5 text-xs text-gray-500">{s.shop.keeper?.name || '–'}</td>
                           <td className="px-3 py-2.5 font-mono text-blue-700">{s.delivered.toFixed(1)} L</td>
@@ -489,19 +493,19 @@ export default function ShopsPage() {
 
       {/* ── ASSIGN SHOPKEEPERS ── */}
       {tab === 'assign' && (
-        <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border shadow-sm overflow-hidden">
           <div className="px-4 py-3 bg-gray-50 border-b text-sm text-gray-600">
             Assign each shop to a dedicated shopkeeper for accountability and performance monitoring.
           </div>
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
+            <thead className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
               <tr>{['Shop','Code','Location','Till Number','Current Shopkeeper','Change Assignment'].map(h => (
                 <th key={h} className="text-left px-4 py-3 text-xs text-gray-500 font-medium">{h}</th>
               ))}</tr>
             </thead>
             <tbody>
               {shops.map((shop: any) => (
-                <tr key={shop.id} className="border-b hover:bg-gray-50">
+                <tr key={shop.id} className="border-b hover:bg-gray-50 dark:hover:bg-gray-800/50">
                   <td className="px-4 py-3 font-medium">{shop.name}</td>
                   <td className="px-4 py-3 font-mono text-xs text-gray-500">{shop.code}</td>
                   <td className="px-4 py-3 text-xs text-gray-500">{shop.location || '–'}</td>

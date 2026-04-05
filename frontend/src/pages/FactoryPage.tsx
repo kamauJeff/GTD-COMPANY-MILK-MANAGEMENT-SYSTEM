@@ -30,6 +30,7 @@ export default function FactoryPage() {
   const { data: receiptsData, isLoading: loadingReceipts } = useQuery({
     queryKey: ['receipts', month, year, selectedDate],
     queryFn: () => factoryApi.receipts({ month, year, date: selectedDate || undefined }),
+    staleTime: 0,
     enabled: tab === 'receipts',
   });
   const receipts: any[] = receiptsData?.data ?? [];
@@ -45,6 +46,7 @@ export default function FactoryPage() {
   const { data: batchesData, isLoading: loadingBatches } = useQuery({
     queryKey: ['batches', month, year, selectedDate],
     queryFn: () => factoryApi.batches({ month, year, date: selectedDate || undefined }),
+    staleTime: 0,
     enabled: tab === 'batches',
   });
   const batches: any[] = batchesData?.data ?? [];
@@ -61,6 +63,7 @@ export default function FactoryPage() {
   const { data: deliveriesData, isLoading: loadingDeliveries } = useQuery({
     queryKey: ['deliveries', month, year, selectedDate],
     queryFn: () => factoryApi.deliveries({ month, year, date: selectedDate || undefined }),
+    staleTime: 0,
     enabled: tab === 'deliveries',
   });
   const deliveries: any[] = deliveriesData?.data ?? [];
@@ -69,6 +72,7 @@ export default function FactoryPage() {
   const { data: liquidData, isLoading: loadingLiquid, refetch: refetchLiquid } = useQuery({
     queryKey: ['liquid', month, year],
     queryFn: () => factoryApi.liquidGrid({ month, year }),
+    staleTime: 0,
     enabled: tab === 'liquid',
     retry: 1,
   });
@@ -143,7 +147,7 @@ export default function FactoryPage() {
       <div className="flex gap-2 mb-4 flex-wrap">
         {([['receipts','🥛 Milk Receipts'],['batches','🧪 Pasteurization'],['deliveries','🚚 Shop Deliveries'],['liquid','📊 Liquid Check']] as const).map(([t, label]) => (
           <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === t ? 'bg-green-600 text-white' : 'border border-gray-300 hover:bg-gray-50'}`}>
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === t ? 'bg-green-600 text-white' : 'border border-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}>
             {label}
           </button>
         ))}
@@ -154,14 +158,14 @@ export default function FactoryPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2 bg-white rounded-xl border shadow-sm overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b"><tr>
+              <thead className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700"><tr>
                 {['Date','Grader','Litres','Notes',''].map(h => <th key={h} className="text-left px-3 py-3 text-xs text-gray-500">{h}</th>)}
               </tr></thead>
               <tbody>
                 {loadingReceipts ? <tr><td colSpan={5} className="text-center py-8 text-gray-400">Loading...</td></tr>
                 : receipts.length === 0 ? <tr><td colSpan={5} className="text-center py-8 text-gray-400">No receipts this month</td></tr>
                 : receipts.map((r: any) => (
-                  <tr key={r.id} className="border-b hover:bg-gray-50">
+                  <tr key={r.id} className="border-b hover:bg-gray-50 dark:hover:bg-gray-800/50">
                     <td className="px-3 py-2.5 text-xs">{new Date(r.receivedAt).toLocaleDateString('en-KE')}</td>
                     <td className="px-3 py-2.5 font-medium">{r.grader?.name}</td>
                     <td className="px-3 py-2.5 font-bold text-blue-700">{Number(r.litres).toFixed(1)} L</td>
@@ -203,7 +207,7 @@ export default function FactoryPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2 bg-white rounded-xl border shadow-sm overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b"><tr>
+              <thead className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700"><tr>
                 {['Batch No','Date','Input','Output','Loss','Efficiency',''].map(h => <th key={h} className="text-left px-3 py-3 text-xs text-gray-500">{h}</th>)}
               </tr></thead>
               <tbody>
@@ -212,7 +216,7 @@ export default function FactoryPage() {
                 : batches.map((b: any) => {
                   const eff = Number(b.inputLitres) > 0 ? ((Number(b.outputLitres) / Number(b.inputLitres)) * 100).toFixed(1) : '–';
                   return (
-                    <tr key={b.id} className="border-b hover:bg-gray-50">
+                    <tr key={b.id} className="border-b hover:bg-gray-50 dark:hover:bg-gray-800/50">
                       <td className="px-3 py-2.5 font-mono text-xs font-bold">{b.batchNo}</td>
                       <td className="px-3 py-2.5 text-xs">{new Date(b.processedAt).toLocaleDateString('en-KE')}</td>
                       <td className="px-3 py-2.5 font-mono">{Number(b.inputLitres).toFixed(1)} L</td>
@@ -260,14 +264,14 @@ export default function FactoryPage() {
       {tab === 'deliveries' && (
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b"><tr>
+            <thead className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700"><tr>
               {['Date','Batch','Shop','Driver','Litres','Selling Price','Revenue'].map(h => <th key={h} className="text-left px-3 py-3 text-xs text-gray-500">{h}</th>)}
             </tr></thead>
             <tbody>
               {loadingDeliveries ? <tr><td colSpan={7} className="text-center py-8 text-gray-400">Loading...</td></tr>
               : deliveries.length === 0 ? <tr><td colSpan={7} className="text-center py-8 text-gray-400">No deliveries this month</td></tr>
               : deliveries.map((d: any) => (
-                <tr key={d.id} className="border-b hover:bg-gray-50">
+                <tr key={d.id} className="border-b hover:bg-gray-50 dark:hover:bg-gray-800/50">
                   <td className="px-3 py-2.5 text-xs">{new Date(d.deliveredAt).toLocaleDateString('en-KE')}</td>
                   <td className="px-3 py-2.5 font-mono text-xs">{d.batch?.batchNo}</td>
                   <td className="px-3 py-2.5 font-medium">{d.shop?.name}</td>

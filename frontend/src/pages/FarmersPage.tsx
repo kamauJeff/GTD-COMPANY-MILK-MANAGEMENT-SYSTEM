@@ -216,9 +216,9 @@ export default function FarmersPage() {
             </label>
           </div>
 
-          <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+          <div className="bg-white dark:bg-gray-900 rounded-xl border shadow-sm overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
                 <tr>{['#','Code','Name & Phone','Route','Payment','Account Details','Period','Status'].map(h => (
                   <th key={h} className="text-left px-3 py-3 text-xs text-gray-500 font-medium whitespace-nowrap">{h}</th>
                 ))}</tr>
@@ -228,7 +228,7 @@ export default function FarmersPage() {
                 : farmers.length === 0 ? <tr><td colSpan={8} className="text-center py-12 text-gray-400">No farmers found.</td></tr>
                 : farmers.map((f, i) => (
                   <tr key={f.id} onClick={() => selectFarmer(f)}
-                    className={`border-b last:border-0 cursor-pointer transition-colors ${selected?.id === f.id ? 'bg-green-50 border-l-4 border-l-green-500' : 'hover:bg-gray-50'}`}>
+                    className={`border-b last:border-0 cursor-pointer transition-colors ${selected?.id === f.id ? 'bg-green-50 border-l-4 border-l-green-500' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}>
                     <td className="px-3 py-3 text-gray-400 text-xs">{(page-1)*50+i+1}</td>
                     <td className="px-3 py-3 font-mono text-xs text-gray-500">{f.code}</td>
                     <td className="px-3 py-3">
@@ -250,7 +250,7 @@ export default function FarmersPage() {
                       ) : <span className="font-mono text-gray-600">{f.mpesaPhone || f.phone}</span>}
                     </td>
                     <td className="px-3 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs ${f.paidOn15th ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
+                      <span className={`px-2 py-0.5 rounded-full text-xs ${f.paidOn15th ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}>
                         {f.paidOn15th ? 'Mid Month' : 'End Month'}
                       </span>
                     </td>
@@ -267,8 +267,8 @@ export default function FarmersPage() {
               <div className="flex justify-between items-center px-4 py-3 border-t text-sm text-gray-500 bg-gray-50">
                 <span>Showing {(page-1)*50+1}–{Math.min(page*50,total)} of {total.toLocaleString()}</span>
                 <div className="flex gap-2">
-                  <button onClick={() => setPage(p=>Math.max(1,p-1))} disabled={page===1} className="px-3 py-1 border rounded disabled:opacity-40 hover:bg-white">Prev</button>
-                  <button onClick={() => setPage(p=>p+1)} disabled={page*50>=total} className="px-3 py-1 border rounded disabled:opacity-40 hover:bg-white">Next</button>
+                  <button onClick={() => setPage(p=>Math.max(1,p-1))} disabled={page===1} className="px-3 py-1 border rounded disabled:opacity-40 hover:bg-white dark:bg-gray-900">Prev</button>
+                  <button onClick={() => setPage(p=>p+1)} disabled={page*50>=total} className="px-3 py-1 border rounded disabled:opacity-40 hover:bg-white dark:bg-gray-900">Next</button>
                 </div>
               </div>
             )}
@@ -278,7 +278,7 @@ export default function FarmersPage() {
 
       {/* Side Panel */}
       {selected && (
-        <div className="fixed right-0 top-0 h-full w-[420px] bg-white border-l shadow-2xl z-40 flex flex-col">
+        <div className="fixed right-0 top-0 h-full w-[420px] bg-white dark:bg-gray-900 border-l shadow-2xl z-40 flex flex-col">
           {/* Header */}
           <div className="bg-green-700 p-4 text-white flex-shrink-0">
             <div className="flex justify-between items-start">
@@ -293,7 +293,7 @@ export default function FarmersPage() {
             <div className="flex gap-1 mt-3">
               {[['details','Details'],['collections','Collections'],['payments','Payments']].map(([t,l]) => (
                 <button key={t} onClick={() => { setPanelTab(t as any); setEditing(false); }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${panelTab === t ? 'bg-white text-green-700' : 'text-green-100 hover:bg-green-600'}`}>
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${panelTab === t ? 'bg-white dark:bg-gray-900 text-green-700' : 'text-green-100 hover:bg-green-600'}`}>
                   {l}
                 </button>
               ))}
@@ -366,7 +366,7 @@ export default function FarmersPage() {
                         className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
                         <Save size={14} /> {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
                       </button>
-                      <button onClick={() => setEditing(false)} className="px-4 py-2.5 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50">
+                      <button onClick={() => setEditing(false)} className="px-4 py-2.5 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         Cancel
                       </button>
                     </div>
@@ -379,13 +379,13 @@ export default function FarmersPage() {
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${selected.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
                         {selected.isActive ? 'Active' : 'Inactive'}
                       </span>
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${selected.paidOn15th ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${selected.paidOn15th ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}>
                         {selected.paidOn15th ? 'Mid Month' : 'End Month'}
                       </span>
                     </div>
 
                     {/* Contact */}
-                    <div className="bg-gray-50 rounded-xl p-4 space-y-2.5">
+                    <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 space-y-2.5">
                       <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Contact</h4>
                       <div className="flex items-center gap-3">
                         <Phone size={14} className="text-gray-400 flex-shrink-0" />
@@ -404,7 +404,7 @@ export default function FarmersPage() {
                     </div>
 
                     {/* Payment */}
-                    <div className="bg-gray-50 rounded-xl p-4 space-y-2.5">
+                    <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 space-y-2.5">
                       <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Payment Details</h4>
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-gray-500">Method</span>
@@ -453,7 +453,7 @@ export default function FarmersPage() {
                 ) : (
                   <div className="space-y-2">
                     {/* Mini calendar grid */}
-                    <div className="bg-gray-50 rounded-xl p-3 mb-3">
+                    <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3 mb-3">
                       <div className="text-xs text-gray-500 mb-2">Daily Litres</div>
                       <div className="grid grid-cols-7 gap-1">
                         {collections.slice(0,31).map((c: any, i: number) => {
@@ -473,7 +473,7 @@ export default function FarmersPage() {
                     {/* List */}
                     <div className="space-y-1">
                       {collections.map((c: any) => (
-                        <div key={c.id} className="flex justify-between items-center px-3 py-2 bg-white rounded-lg border border-gray-100 hover:border-green-200">
+                        <div key={c.id} className="flex justify-between items-center px-3 py-2 bg-white dark:bg-gray-900 rounded-lg border border-gray-100 hover:border-green-200">
                           <div className="text-xs text-gray-500">{new Date(c.collectedAt).toLocaleDateString('en-KE', { weekday: 'short', day: 'numeric', month: 'short' })}</div>
                           <div className="font-mono font-bold text-green-700 text-sm">{Number(c.litres).toFixed(1)} L</div>
                           <div className="text-xs text-gray-400">KES {(Number(c.litres) * Number(selected.pricePerLitre)).toLocaleString()}</div>
@@ -499,7 +499,7 @@ export default function FarmersPage() {
                 ) : (
                   <div className="space-y-2">
                     {farmerPayments.map((p: any) => (
-                      <div key={p.id} className="bg-white rounded-xl border border-gray-100 p-3 hover:border-green-200">
+                      <div key={p.id} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 p-3 hover:border-green-200">
                         <div className="flex justify-between items-start mb-2">
                           <div>
                             <div className="font-medium text-sm">{MONTHS[p.periodMonth-1]} {p.periodYear}</div>
@@ -518,7 +518,7 @@ export default function FarmersPage() {
                             <div className="text-red-400">Advances</div>
                             <div className="font-mono font-medium text-red-600">{Number(p.totalAdvances).toLocaleString()}</div>
                           </div>
-                          <div className={`text-center rounded p-1.5 ${Number(p.netPay) < 0 ? 'bg-red-50' : 'bg-green-50'}`}>
+                          <div className={`text-center rounded p-1.5 ${Number(p.netPay) < 0 ? 'bg-red-50 dark:bg-red-900/20' : 'bg-green-50 dark:bg-green-900/20'}`}>
                             <div className={Number(p.netPay) < 0 ? 'text-red-400' : 'text-green-400'}>Net Pay</div>
                             <div className={`font-mono font-bold ${Number(p.netPay) < 0 ? 'text-red-600' : 'text-green-700'}`}>{Number(p.netPay).toLocaleString()}</div>
                           </div>
@@ -622,7 +622,7 @@ export default function FarmersPage() {
       )}
       {showAddFarmer && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="bg-green-700 px-5 py-4 text-white rounded-t-2xl flex justify-between items-center">
               <h2 className="text-lg font-bold">Add New Farmer</h2>
               <button onClick={() => setShowAddFarmer(false)} className="text-green-200 hover:text-white"><X size={20} /></button>

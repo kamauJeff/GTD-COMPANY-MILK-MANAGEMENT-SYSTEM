@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { showSuccess, showError, showWarning } from '../components/Toast';
@@ -19,6 +20,7 @@ export default function PaymentsPage() {
   const [recordStatus, setRecordStatus] = useState('ALL');
   const [showAdvanceForm, setShowAdvanceForm] = useState(false);
   const [advForm, setAdvForm]     = useState({ farmerCode: '', amount: '', notes: '', date: new Date().toISOString().split('T')[0] });
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
   async function handleRefresh() { setRefreshing(true); await qc.invalidateQueries(); setRefreshing(false); }
@@ -164,7 +166,7 @@ export default function PaymentsPage() {
     PAID: 'bg-green-100 text-green-700',
     APPROVED: 'bg-blue-100 text-blue-700',
     PENDING: 'bg-yellow-100 text-yellow-600',
-  }[status] || 'bg-gray-100 text-gray-600');
+  }[status] || 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300');
 
   return (
     <div className="p-6">
@@ -186,10 +188,10 @@ export default function PaymentsPage() {
             {routes.map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
           </select>
           <div className="flex border border-gray-300 rounded-lg overflow-hidden">
-            <button onClick={() => setIsMidMonth(true)} className={`px-3 py-2 text-sm font-medium ${isMidMonth ? 'bg-purple-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+            <button onClick={() => setIsMidMonth(true)} className={`px-3 py-2 text-sm font-medium ${isMidMonth ? 'bg-purple-600 text-white' : 'bg-white dark:bg-gray-900 text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}>
               Mid Month
             </button>
-            <button onClick={() => setIsMidMonth(false)} className={`px-3 py-2 text-sm font-medium border-l ${!isMidMonth ? 'bg-green-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+            <button onClick={() => setIsMidMonth(false)} className={`px-3 py-2 text-sm font-medium border-l ${!isMidMonth ? 'bg-green-600 text-white' : 'bg-white dark:bg-gray-900 text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}>
               End Month
             </button>
           </div>
@@ -216,7 +218,7 @@ export default function PaymentsPage() {
       <div className="flex gap-2 mb-5">
         {[['compute','💰 Compute & Approve'],['records','📋 Payment Records'],['advances','📝 Advances']].map(([t, l]) => (
           <button key={t} onClick={() => setTab(t as Tab)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === t ? 'bg-green-600 text-white' : 'border border-gray-300 hover:bg-gray-50'}`}>
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === t ? 'bg-green-600 text-white' : 'border border-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}>
             {l}
           </button>
         ))}
@@ -249,13 +251,13 @@ export default function PaymentsPage() {
               {/* Step 2 */}
               <div className="flex-1 min-w-[200px] bg-green-600 rounded-xl p-4 text-white">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="w-6 h-6 bg-white text-green-600 rounded-full text-xs font-bold flex items-center justify-center">2</span>
+                  <span className="w-6 h-6 bg-white dark:bg-gray-800 text-green-600 dark:text-green-400 rounded-full text-xs font-bold flex items-center justify-center">2</span>
                   <span className="font-semibold text-sm">Review & Approve</span>
                 </div>
                 <p className="text-xs text-green-100 mb-3">Review below, then approve all or by route</p>
                 <div className="flex gap-2">
                   <button onClick={() => computeApproveMut.mutate()} disabled={computeApproveMut.isPending || runMut.isPending}
-                    className="flex-1 px-3 py-2 bg-white text-green-700 rounded-lg text-xs font-bold hover:bg-green-50 disabled:opacity-50">
+                    className="flex-1 px-3 py-2 bg-white dark:bg-gray-800 text-green-700 dark:text-green-400 rounded-lg text-xs font-bold hover:bg-green-50 disabled:opacity-50">
                     {computeApproveMut.isPending ? '⏳...' : '✅ Compute + Approve All'}
                   </button>
                   <button onClick={() => approveMut.mutate(undefined)} disabled={approveMut.isPending}
@@ -274,10 +276,10 @@ export default function PaymentsPage() {
                   <span className="font-semibold text-sm dark:text-gray-100">Disburse</span>
                 </div>
                 <p className="text-xs text-gray-400 mb-3">Send M-Pesa & download bank CSV</p>
-                <a href="/disbursement"
+                <button onClick={() => navigate('/disbursement')}
                   className="block w-full px-3 py-2 bg-purple-600 text-white rounded-lg text-xs font-medium hover:bg-purple-700 text-center">
                   💳 Go to Disbursement →
-                </a>
+                </button>
               </div>
             </div>
             <div className="mt-3 flex gap-2 flex-wrap items-center">
@@ -335,7 +337,7 @@ export default function PaymentsPage() {
                     {/* Farmers table */}
                     {isExpanded && (
                       <table className="w-full text-sm">
-                        <thead className="bg-gray-50 border-b">
+                        <thead className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
                           <tr>
                             {['','Code','Farmer','Payment','Account','Litres','Gross','Advances','B/f','Net Pay','Status'].map(h => (
                               <th key={h} className="text-left px-3 py-2 text-xs text-gray-500 font-medium whitespace-nowrap">{h}</th>
@@ -347,7 +349,7 @@ export default function PaymentsPage() {
                             const isSelected = selectedFarmers.includes(f.farmer.id);
                             const isNeg = f.netPay < 0;
                             return (
-                              <tr key={f.farmer.id} className={`border-b last:border-0 ${isNeg ? 'bg-red-50' : isSelected ? 'bg-green-50' : 'hover:bg-gray-50'}`}>
+                              <tr key={f.farmer.id} className={`border-b last:border-0 ${isNeg ? 'bg-red-50 dark:bg-red-900/20' : isSelected ? 'bg-green-50 dark:bg-green-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}>
                                 <td className="px-3 py-2.5">
                                   <input type="checkbox" checked={isSelected} onChange={() => toggleFarmer(f.farmer.id)} className="w-3.5 h-3.5 accent-green-600" />
                                 </td>
@@ -383,7 +385,7 @@ export default function PaymentsPage() {
                             );
                           })}
                         </tbody>
-                        <tfoot className="bg-gray-50 border-t">
+                        <tfoot className="bg-gray-50 dark:bg-gray-800 border-t dark:border-gray-700">
                           <tr>
                             <td colSpan={5} className="px-3 py-2 text-xs font-bold text-gray-600">ROUTE TOTAL</td>
                             <td className="px-3 py-2 font-bold font-mono text-xs">{rg.totalLitres.toFixed(0)} L</td>
@@ -411,17 +413,17 @@ export default function PaymentsPage() {
             <div className="flex border border-gray-300 rounded-lg overflow-hidden text-sm">
               {[['ALL','All'],['PENDING','Pending'],['APPROVED','Approved'],['PAID','Paid']].map(([v, l]) => (
                 <button key={v} onClick={() => setRecordStatus(v)}
-                  className={`px-3 py-2 font-medium ${recordStatus === v ? 'bg-green-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'} border-r last:border-0`}>
+                  className={`px-3 py-2 font-medium ${recordStatus === v ? 'bg-green-600 text-white' : 'bg-white dark:bg-gray-900 text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800/50'} border-r last:border-0`}>
                   {l}
                 </button>
               ))}
             </div>
             <button onClick={() => downloadFile('/api/payments/kopokopo-export', `kopokopo-${MONTHS[month-1]}-${year}.csv`)}
-              className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2 hover:bg-gray-50">
+              className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-800/50">
               <Download size={14} /> KopoKopo CSV
             </button>
             <button onClick={() => downloadFile('/api/payments/bank-export', `bank-${MONTHS[month-1]}-${year}.csv`)}
-              className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2 hover:bg-gray-50">
+              className="px-3 py-2 border rounded-lg text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-800/50">
               <Download size={14} /> Bank CSV
             </button>
           </div>
@@ -435,7 +437,7 @@ export default function PaymentsPage() {
                 { label: 'Paid', value: totals.paid, color: 'text-green-700' },
                 { label: 'Negative', value: totals.negative, color: 'text-red-600' },
               ].map(s => (
-                <div key={s.label} className="bg-white rounded-xl border p-3 shadow-sm">
+                <div key={s.label} className="bg-white dark:bg-gray-900 rounded-xl border p-3 shadow-sm">
                   <div className="text-xs text-gray-400">{s.label}</div>
                   <div className={`text-lg font-bold ${s.color}`}>{s.value}</div>
                 </div>
@@ -443,14 +445,14 @@ export default function PaymentsPage() {
             </div>
           )}
 
-          <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+          <div className="bg-white dark:bg-gray-900 rounded-xl border shadow-sm overflow-hidden">
             {recordsLoading ? (
               <div className="text-center py-12 text-gray-400">Loading...</div>
             ) : payments.length === 0 ? (
               <div className="text-center py-12 text-gray-400">No payment records found. Generate them in the Compute tab first.</div>
             ) : (
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b">
+                <thead className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
                   <tr>{['Code','Farmer','Route','Method','Account','Litres','Gross','Total Deductions','Net Pay','Status','Action'].map(h => (
                     <th key={h} className="text-left px-3 py-3 text-xs text-gray-500 font-medium whitespace-nowrap">{h}</th>
                   ))}</tr>
@@ -460,7 +462,7 @@ export default function PaymentsPage() {
                     const f = p.farmer;
                     const isNeg = Number(p.netPay) < 0;
                     return (
-                      <tr key={p.id} className={`border-b last:border-0 ${isNeg ? 'bg-red-50' : 'hover:bg-gray-50'}`}>
+                      <tr key={p.id} className={`border-b last:border-0 ${isNeg ? 'bg-red-50 dark:bg-red-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}>
                         <td className="px-3 py-2.5 font-mono text-xs text-gray-400">{f.code}</td>
                         <td className="px-3 py-2.5 font-medium">{f.name}</td>
                         <td className="px-3 py-2.5 text-xs text-gray-500">{f.route?.name}</td>
@@ -514,7 +516,7 @@ export default function PaymentsPage() {
           </div>
 
           {showAdvanceForm && (
-            <div className="bg-white rounded-xl border shadow-sm p-5">
+            <div className="bg-white dark:bg-gray-900 rounded-xl border shadow-sm p-5">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="font-semibold text-gray-800">Record Advance</h3>
                 <button onClick={() => setShowAdvanceForm(false)}><X size={18} className="text-gray-400" /></button>
@@ -548,9 +550,9 @@ export default function PaymentsPage() {
             </div>
           )}
 
-          <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+          <div className="bg-white dark:bg-gray-900 rounded-xl border shadow-sm overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
                 <tr>{['Date','Code','Farmer','Route','Amount','Notes',''].map(h => (
                   <th key={h} className="text-left px-3 py-3 text-xs text-gray-500 font-medium">{h}</th>
                 ))}</tr>
@@ -559,7 +561,7 @@ export default function PaymentsPage() {
                 {advances.length === 0 ? (
                   <tr><td colSpan={7} className="text-center py-12 text-gray-400">No advances recorded for {MONTHS[month-1]} {year}</td></tr>
                 ) : advances.map((a: any) => (
-                  <tr key={a.id} className="border-b last:border-0 hover:bg-gray-50">
+                  <tr key={a.id} className="border-b last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50">
                     <td className="px-3 py-2.5 text-xs text-gray-500">{new Date(a.advanceDate).toLocaleDateString('en-KE')}</td>
                     <td className="px-3 py-2.5 font-mono text-xs text-gray-400">{a.farmer.code}</td>
                     <td className="px-3 py-2.5 font-medium">{a.farmer.name}</td>

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { showSuccess, showError } from '../components/Toast';
-import { Plus, Trash2, Download } from 'lucide-react';
+import { Plus, Trash2, Download, AlertCircle, ChevronRight } from 'lucide-react';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const ADVANCE_DATES = [5, 10, 20, 25];
@@ -30,6 +30,17 @@ export default function AdvancesPage() {
 
   const { data: routesData } = useQuery({ queryKey: ['routes'], queryFn: () => api.get('/api/routes') });
   const routes: any[] = routesData?.data ?? [];
+
+  // B/f balances — single source of truth from backend
+  const { data: bfData, refetch: refetchBf } = useQuery({
+    queryKey: ['bf-balances', month, year, routeId],
+    queryFn: () => api.get('/api/payments/bf-balances', { params: { month, year, routeId: routeId || undefined } }),
+    staleTime: 0,
+  });
+  const bfBalances: any[] = bfData?.data?.balances ?? [];
+  const totalBf: number = bfData?.data?.totalBf ?? 0;
+  const prevMonth = bfData?.data?.prevMonth ?? (month === 1 ? 12 : month - 1);
+  const prevYear  = bfData?.data?.prevYear  ?? (month === 1 ? year - 1 : year);
 
   // Live farmer search for single-entry form
   const { data: farmerSuggestData } = useQuery({
@@ -272,6 +283,57 @@ export default function AdvancesPage() {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── B/f Balances Section ──────────────────────────────────────── */}
+      {bfBalances.length > 0 && (
+        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-orange-200 dark:border-orange-800 overflow-hidden mb-2">
+          <div className="flex items-center justify-between px-5 py-3 bg-orange-50 dark:bg-orange-900/20 border-b border-orange-200 dark:border-orange-800">
+            <div className="flex items-center gap-2">
+              <AlertCircle size={15} className="text-orange-600 dark:text-orange-400" />
+              <span className="font-bold text-orange-700 dark:text-orange-400 text-sm">
+                Balance b/f from {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][prevMonth-1]} {prevYear}
+              </span>
+              <span className="text-xs bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 px-2 py-0.5 rounded-full">
+                {bfBalances.length} farmers
+              </span>
+            </div>
+            <div className="font-bold font-mono text-orange-700 dark:text-orange-400">
+              Total: KES {totalBf.toLocaleString()}
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
+                <tr>
+                  {['Code','Farmer','B/f Amount','Source'].map(h => (
+                    <th key={h} className="text-left px-4 py-2 text-xs text-gray-500 dark:text-gray-400 font-medium">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {bfBalances.map((bf: any) => (
+                  <tr key={bf.farmerId} className="border-b dark:border-gray-800 last:border-0 hover:bg-orange-50/50 dark:hover:bg-orange-900/10">
+                    <td className="px-4 py-2.5 font-mono text-xs text-gray-400">{bf.code}</td>
+                    <td className="px-4 py-2.5 font-medium text-gray-800 dark:text-gray-200">{bf.name}</td>
+                    <td className="px-4 py-2.5 font-bold font-mono text-orange-600 dark:text-orange-400">
+                      KES {bf.bfAmount.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        bf.source === 'correction'
+                          ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
+                          : 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'
+                      }`}>
+                        {bf.source === 'correction' ? 'Office correction' : 'Prev month negative'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

@@ -337,7 +337,7 @@ export default function PaymentsPage() {
                       <table className="w-full text-sm">
                         <thead className="bg-gray-50 border-b">
                           <tr>
-                            {['','Code','Farmer','Payment','Account','Litres','Gross','Total Deductions','Net Pay','Status'].map(h => (
+                            {['','Code','Farmer','Payment','Account','Litres','Gross','Advances','B/f','Net Pay','Status'].map(h => (
                               <th key={h} className="text-left px-3 py-2 text-xs text-gray-500 font-medium whitespace-nowrap">{h}</th>
                             ))}
                           </tr>
@@ -363,7 +363,12 @@ export default function PaymentsPage() {
                                 </td>
                                 <td className="px-3 py-2.5 font-mono">{f.totalLitres.toFixed(1)} L</td>
                                 <td className="px-3 py-2.5 font-mono">KES {f.grossPay.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
-                                <td className="px-3 py-2.5 font-mono text-red-600">KES {(Number(f.totalDeductions ?? 0) || (Number(f.totalAdvances ?? 0) + Number(f.carriedForward ?? 0))).toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+                                <td className="px-3 py-2.5 font-mono text-orange-600">
+                                  {Number(f.totalAdvances || 0) > 0 ? `KES ${Number(f.totalAdvances).toLocaleString(undefined,{maximumFractionDigits:0})}` : '–'}
+                                </td>
+                                <td className={`px-3 py-2.5 font-mono font-bold ${Number(f.bfBalance || 0) > 0 ? 'text-red-600' : 'text-gray-300'}`}>
+                                  {Number(f.bfBalance || 0) > 0 ? `KES ${Number(f.bfBalance).toLocaleString(undefined,{maximumFractionDigits:0})}` : '–'}
+                                </td>
                                 <td className={`px-3 py-2.5 font-bold font-mono ${isNeg ? 'text-red-600' : 'text-green-700'}`}>
                                   KES {f.netPay.toLocaleString(undefined,{maximumFractionDigits:0})}
                                 </td>
@@ -383,8 +388,8 @@ export default function PaymentsPage() {
                             <td colSpan={5} className="px-3 py-2 text-xs font-bold text-gray-600">ROUTE TOTAL</td>
                             <td className="px-3 py-2 font-bold font-mono text-xs">{rg.totalLitres.toFixed(0)} L</td>
                             <td className="px-3 py-2 font-bold font-mono text-xs">KES {rg.totalGross.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
-                            <td className="px-3 py-2 font-bold font-mono text-xs text-red-600">KES {Number(rg.totalDeductions ?? rg.totalAdvances ?? 0).toLocaleString(undefined,{maximumFractionDigits:0})}</td>
-                            <td className="px-3 py-2"></td>
+                            <td className="px-3 py-2 font-bold font-mono text-xs text-orange-600">KES {Number(rg.totalAdvances ?? 0).toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+                            <td className="px-3 py-2 font-bold font-mono text-xs text-red-600">{Number(rg.totalBf ?? 0) > 0 ? `KES ${Number(rg.totalBf).toLocaleString(undefined,{maximumFractionDigits:0})}` : '–'}</td>
                             <td className="px-3 py-2 font-bold font-mono text-xs text-green-700">KES {rg.totalNet.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
                             <td className="px-3 py-2"></td>
                           </tr>

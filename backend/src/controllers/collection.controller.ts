@@ -387,7 +387,7 @@ export async function getJournalGridFull(req: Request, res: Response) {
 
   const [prevPayments, bfDeductions] = await Promise.all([
     prisma.farmerPayment.findMany({
-      where: { dairyId: req.dairyId!, periodMonth: prevMonth, periodYear: prevYear, netPay: { lt: 0 }, status: 'PAID' },
+      where: { dairyId: req.dairyId!, periodMonth: prevMonth, periodYear: prevYear, isMidMonth: false, netPay: { lt: 0 } }, // status omitted intentionally — carry ANY negative
       select: { farmerId: true, netPay: true },
     }),
     prisma.farmerDeduction.findMany({

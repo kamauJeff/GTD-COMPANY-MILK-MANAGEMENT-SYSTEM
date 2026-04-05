@@ -198,49 +198,63 @@ router.get('/', async (req, res) => {
     return res.json({ payments: enriched, totals });
   }
 
-  // Fast batch preview — 4 queries total, no per-farmer loops
+  // Fast batch preview — includes b/f for full transparency
   const { start, end } = periodDates(m, y, mid);
+  const prevMonth = m === 1 ? 12 : m - 1;
+  const prevYear  = m === 1 ? y - 1 : y;
   const whereRoute: any = { isActive: true };
   if (routeId) whereRoute.routeId = Number(routeId);
   if (mid) whereRoute.paidOn15th = true;
 
-  const [farmers, collections, advances, deductions] = await Promise.all([
+  const [farmers, collections, advances, deductions, prevNegatives, bfCorrections] = await Promise.all([
     prisma.farmer.findMany({ where: { dairyId: req.dairyId!, ...whereRoute }, include: { route: { select: { id: true, code: true, name: true } } } }),
     prisma.milkCollection.groupBy({ by: ['farmerId'], where: { dairyId: req.dairyId!, collectedAt: { gte: start, lt: end } }, _sum: { litres: true } }),
     prisma.farmerAdvance.groupBy({ by: ['farmerId'], where: { dairyId: req.dairyId!, advanceDate: { gte: start, lt: end } }, _sum: { amount: true } }),
-    prisma.farmerDeduction.groupBy({ by: ['farmerId'], where: { dairyId: req.dairyId!, periodMonth: m, periodYear: y }, _sum: { amount: true } }),
+    // Other deductions (non-b/f)
+    prisma.farmerDeduction.groupBy({ by: ['farmerId'], where: { dairyId: req.dairyId!, periodMonth: m, periodYear: y, reason: { not: { contains: 'B/f' } } }, _sum: { amount: true } }),
+    // Prev month negatives → b/f source (any status)
+    prisma.farmerPayment.findMany({ where: { dairyId: req.dairyId!, periodMonth: prevMonth, periodYear: prevYear, isMidMonth: false, netPay: { lt: 0 } }, select: { farmerId: true, netPay: true } }),
+    // Office b/f corrections for this month
+    prisma.farmerDeduction.findMany({ where: { dairyId: req.dairyId!, periodMonth: m, periodYear: y, reason: { contains: 'B/f' } }, select: { farmerId: true, amount: true } }),
   ]);
 
   const collMap = new Map(collections.map(c => [c.farmerId, Number(c._sum.litres || 0)]));
   const advMap  = new Map(advances.map(a => [a.farmerId, Number(a._sum.amount || 0)]));
   const dedMap  = new Map(deductions.map(d => [d.farmerId, Number(d._sum.amount || 0)]));
+  // Build b/f map: office correction takes priority over prev negative
+  const bfCorrMap = new Map(bfCorrections.map(d => [d.farmerId, Number(d.amount)]));
+  const prevNegMap = new Map(prevNegatives.map(p => [p.farmerId, Math.abs(Number(p.netPay))]));
+  const getBf = (farmerId: number) => bfCorrMap.get(farmerId) ?? prevNegMap.get(farmerId) ?? 0;
+
   const byRoute: Record<string, any> = {};
 
   for (const farmer of farmers) {
     const totalLitres    = collMap.get(farmer.id) || 0;
     const totalAdvances  = Number(advMap.get(farmer.id) || 0);
-    if (totalLitres === 0 && totalAdvances === 0) continue;
+    const bfBalance      = getBf(farmer.id);  // b/f from prev month
+    if (totalLitres === 0 && totalAdvances === 0 && bfBalance === 0) continue;
     const grossPay        = Number(totalLitres) * Number(farmer.pricePerLitre);
     const otherDeductions = Number(dedMap.get(farmer.id) || 0);
-    const totalDeductions = totalAdvances + otherDeductions; // combined: advances + other charges
+    const totalDeductions = totalAdvances + otherDeductions + bfBalance;
     const netPay          = grossPay - totalDeductions;
     const r = {
       farmer: { id: farmer.id, code: farmer.code, name: farmer.name, phone: farmer.phone,
         mpesaPhone: farmer.mpesaPhone, paymentMethod: farmer.paymentMethod,
         bankName: farmer.bankName, bankAccount: farmer.bankAccount,
         paidOn15th: farmer.paidOn15th, route: farmer.route },
-      totalLitres, grossPay, totalAdvances, totalDeductions, carriedForward: 0, netPay,
+      totalLitres, grossPay, totalAdvances, bfBalance, otherDeductions, totalDeductions, netPay,
       pricePerLitre: Number(farmer.pricePerLitre),
     };
     const key = farmer.route?.code || 'UNKNOWN';
     if (!byRoute[key]) byRoute[key] = {
       routeCode: farmer.route?.code, routeName: farmer.route?.name, routeId: farmer.route?.id,
-      farmers: [], totalLitres: 0, totalGross: 0, totalAdvances: 0, totalDeductions: 0, totalNet: 0, negativeCount: 0,
+      farmers: [], totalLitres: 0, totalGross: 0, totalAdvances: 0, totalBf: 0, totalDeductions: 0, totalNet: 0, negativeCount: 0,
     };
     byRoute[key].farmers.push(r);
     byRoute[key].totalLitres      += totalLitres;
     byRoute[key].totalGross       += grossPay;
     byRoute[key].totalAdvances    += totalAdvances;
+    byRoute[key].totalBf          += bfBalance;
     byRoute[key].totalDeductions  += totalDeductions;
     byRoute[key].totalNet         += netPay > 0 ? netPay : 0;
     if (netPay < 0) byRoute[key].negativeCount++;
@@ -691,5 +705,62 @@ router.post('/kopokopo-config', authorize('ADMIN'), async (req: any, res) => {
       '3. Redeploy the service',
       '4. Come back and test with a small payment first',
     ],
+  });
+});
+
+// ── GET /api/payments/bf-balances — b/f balances for all farmers for a period ──
+// Single source of truth used by journal grid, advances page, reports, statements
+router.get('/bf-balances', authorize('ADMIN', 'OFFICE', 'GRADER'), async (req, res) => {
+  const { month, year, routeId } = req.query;
+  const m = Number(month); const y = Number(year);
+  const prevMonth = m === 1 ? 12 : m - 1;
+  const prevYear  = m === 1 ? y - 1 : y;
+
+  // Get all farmers in scope
+  const farmerWhere: any = { dairyId: req.dairyId!, isActive: true };
+  if (routeId) farmerWhere.routeId = Number(routeId);
+  const farmers = await prisma.farmer.findMany({
+    where: farmerWhere,
+    select: { id: true, code: true, name: true },
+  });
+  const farmerIds = farmers.map(f => f.id);
+
+  // Priority 1: office b/f correction entries for THIS month
+  const bfCorrections = await prisma.farmerDeduction.findMany({
+    where: { dairyId: req.dairyId!, farmerId: { in: farmerIds }, periodMonth: m, periodYear: y, reason: { contains: 'B/f' } },
+    select: { farmerId: true, amount: true },
+  });
+  const correctionMap = new Map(bfCorrections.map(d => [d.farmerId, Number(d.amount)]));
+
+  // Priority 2: prev end-month negative payments (ANY status)
+  const prevNegatives = await prisma.farmerPayment.findMany({
+    where: { dairyId: req.dairyId!, farmerId: { in: farmerIds }, periodMonth: prevMonth, periodYear: prevYear, isMidMonth: false, netPay: { lt: 0 } },
+    select: { farmerId: true, netPay: true, periodMonth: true, periodYear: true },
+  });
+  const prevNegMap = new Map(prevNegatives.map(p => [p.farmerId, Math.abs(Number(p.netPay))]));
+
+  // Build result: correction overrides prev negative
+  const result: Record<number, { farmerId: number; code: string; name: string; bfAmount: number; source: string }> = {};
+  for (const f of farmers) {
+    const correction = correctionMap.get(f.id);
+    const prevNeg    = prevNegMap.get(f.id);
+    const bfAmount   = correction ?? prevNeg ?? 0;
+    if (bfAmount > 0) {
+      result[f.id] = {
+        farmerId: f.id,
+        code:     f.code,
+        name:     f.name,
+        bfAmount,
+        source:   correction ? 'correction' : 'prev_negative',
+      };
+    }
+  }
+
+  res.json({
+    month: m, year: y,
+    prevMonth, prevYear,
+    balances: Object.values(result),
+    totalBf: Object.values(result).reduce((s, r) => s + r.bfAmount, 0),
+    count: Object.values(result).length,
   });
 });

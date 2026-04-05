@@ -205,7 +205,7 @@ router.get('/', async (req, res) => {
   if (mid) whereRoute.paidOn15th = true;
 
   const [farmers, collections, advances, deductions] = await Promise.all([
-    prisma.farmer.findMany({ where: whereRoute, include: { route: { select: { id: true, code: true, name: true } } } }),
+    prisma.farmer.findMany({ where: { dairyId: req.dairyId!, ...whereRoute }, include: { route: { select: { id: true, code: true, name: true } } } }),
     prisma.milkCollection.groupBy({ by: ['farmerId'], where: { dairyId: req.dairyId!, collectedAt: { gte: start, lt: end } }, _sum: { litres: true } }),
     prisma.farmerAdvance.groupBy({ by: ['farmerId'], where: { dairyId: req.dairyId!, advanceDate: { gte: start, lt: end } }, _sum: { amount: true } }),
     prisma.farmerDeduction.groupBy({ by: ['farmerId'], where: { dairyId: req.dairyId!, periodMonth: m, periodYear: y }, _sum: { amount: true } }),
@@ -262,7 +262,7 @@ router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
     if (mid) whereRoute.paidOn15th = true;
 
     const farmers = await prisma.farmer.findMany({
-      where: whereRoute,
+      where: { dairyId: req.dairyId!, ...whereRoute },
       select: { id: true, pricePerLitre: true, paidOn15th: true },
     });
     if (farmers.length === 0) return res.json({ created: 0, message: 'No farmers found' });
@@ -379,7 +379,7 @@ router.post('/run', authorize('ADMIN', 'OFFICE'), async (req, res) => {
       const netPay          = grossPay - totalDeductions;
 
       records.push({
-        farmerId: f.id, periodMonth: m, periodYear: y, isMidMonth: mid,
+        dairyId: req.dairyId!, farmerId: f.id, periodMonth: m, periodYear: y, isMidMonth: mid,
         grossPay, totalAdvances: advances, totalDeductions, netPay,
       });
     }
@@ -414,12 +414,12 @@ router.post('/approve', authorize('ADMIN', 'OFFICE'), async (req, res) => {
   const { month, year, isMidMonth, routeId, farmerIds } = req.body;
   const m = Number(month); const y = Number(year); const mid = !!isMidMonth;
 
-  const where: any = { periodMonth: m, periodYear: y, isMidMonth: mid, status: 'PENDING', netPay: { gt: 0 } };
+  const where: any = { dairyId: req.dairyId!, periodMonth: m, periodYear: y, isMidMonth: mid, status: 'PENDING', netPay: { gt: 0 } };
   if (routeId) where.farmer = { routeId: Number(routeId) };
   if (farmerIds?.length) where.farmerId = { in: farmerIds };
 
   const result = await prisma.farmerPayment.updateMany({ where, data: { status: 'APPROVED' } });
-  res.json({ approved: result.count });
+  res.json({ approved: result.count, message: `${result.count} payments approved` });
 });
 
 // POST /api/payments/mark-paid — mark as paid after disbursement

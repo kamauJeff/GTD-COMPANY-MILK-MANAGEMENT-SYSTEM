@@ -49,7 +49,7 @@ export default function DisbursementPage() {
   const kpBalance = balData?.data?.balance;
 
   const disburseMut = useMutation({
-    mutationFn: () => api.post('/api/payments/disburse', { month, year, isMidMonth, routeId: routeId || undefined }),
+    mutationFn: () => api.post('/api/disbursement/disburse', { month, year, isMidMonth, routeId: routeId || undefined }),
     onSuccess: (r) => {
       const d = r.data;
       showSuccess(`✅ Disbursed ${d.successful}/${d.total}`, `M-Pesa: ${d.successful} · Bank CSV: ${d.bankPayments} · Failed: ${d.failed}`);
